@@ -6,6 +6,7 @@ object ArbitraryInstances extends ArbitraryInstances
   with autoscaling.model.ArbitraryInstances
   with ecs.model.ArbitraryInstances
   with ec2.model.ArbitraryInstances
+  with sns.model.ArbitraryInstances
 
 trait ArbitraryInstances {
 

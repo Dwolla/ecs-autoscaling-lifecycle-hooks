@@ -19,17 +19,17 @@ import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.autoscaling.{AutoScalingAlg, AutoScalingAlgImpl}
 import com.dwolla.aws.ecs.{EcsAlg, EcsAlgImpl}
 import com.dwolla.aws.lambda.fs2.LambdaContext._
+import com.dwolla.aws.sns.model.SnsTopicArn
 import org.specs2.ScalaCheck
-import org.specs2.concurrent.ExecutionEnv
 import org.specs2.matcher.{IOImplicits, IOMatchers, Matchers}
 import org.specs2.mock.Mockito
 import org.specs2.mutable.Specification
 
-class TerminationEventHandlerSpec(implicit ee: ExecutionEnv) extends Specification with IOMatchers with IOImplicits with Matchers with ScalaCheck with Mockito {
-  private def snsMessage[T:Encoder](detail: T): Json =
-    snsMessage(detail.asJson)
+class TerminationEventHandlerSpec extends Specification with IOMatchers with IOImplicits with Matchers with ScalaCheck with Mockito {
+  private def snsMessage[T: Encoder](topic: SnsTopicArn, detail: T, maybeSubject: Option[String]): Json =
+    snsMessage(topic.asJson, detail.asJson, maybeSubject.asJson)
 
-  private def snsMessage(detail: Json): Json =
+  private def snsMessage(topic: Json, detail: Json, subject: Json): Json =
     json"""{
              "Records": [
                {
@@ -39,8 +39,8 @@ class TerminationEventHandlerSpec(implicit ee: ExecutionEnv) extends Specificati
                  "Sns": {
                    "Type": "Notification",
                    "MessageId": "95df01b4-ee98-5cb9-9903-4c221d41eb5e",
-                   "TopicArn": "arn:aws:sns:us-west-2:123456789012:ExampleTopic",
-                   "Subject": "example subject",
+                   "TopicArn": $topic,
+                   "Subject": $subject,
                    "Message": ${detail.noSpaces},
                    "Timestamp": "1970-01-01T00:00:00.000Z",
                    "SignatureVersion": "1",
@@ -63,7 +63,11 @@ class TerminationEventHandlerSpec(implicit ee: ExecutionEnv) extends Specificati
            }"""
 
   "TerminationEventHandler" should {
-    "handle a message" >> { prop { (arbitraryContext: Context, arbitraryLifecycleHookNotification: LifecycleHookNotification) =>
+    "handle a message" >> { prop { (arbSnsTopicArn: SnsTopicArn,
+                                    arbitraryContext: Context,
+                                    arbitraryLifecycleHookNotification: LifecycleHookNotification,
+                                    arbSubject: Option[String],
+                                   ) =>
       val baos = new ByteArrayOutputStream()
       val ecsClient: AmazonECSAsync = mock[AmazonECSAsync]
       val autoScalingClient: AmazonAutoScalingAsync = mock[AmazonAutoScalingAsync]
@@ -73,21 +77,28 @@ class TerminationEventHandlerSpec(implicit ee: ExecutionEnv) extends Specificati
         deferredEcsInterpreter <- Deferred[IO, EcsAlg[IO, Stream[IO, ?]]]
         deferredAutoScalingInterpreter <- Deferred[IO, AutoScalingAlg[IO]]
         deferredLifecycleHookNotification <- Deferred[IO, LifecycleHookNotification]
+        deferredSnsTopicArn <- Deferred[IO, SnsTopicArn]
+
         eventHandler = new TerminationEventHandler(
           Resource.pure(ecsClient),
           Resource.pure(autoScalingClient),
           Resource.pure(snsClient),
-          (ecs, asg) => l => for {
+          (ecs, asg) => (a, l) => for {
+            _ <- deferredSnsTopicArn.complete(a)
             _ <- deferredLifecycleHookNotification.complete(l)
             _ <- deferredEcsInterpreter.complete(ecs)
             _ <- deferredAutoScalingInterpreter.complete(asg)
           } yield ()
         )
-        _ <- IO(eventHandler.handleRequest(new StringInputStream(snsMessage(arbitraryLifecycleHookNotification).noSpaces), baos, arbitraryContext))
+
+        _ <- IO(eventHandler.handleRequest(new StringInputStream(snsMessage(arbSnsTopicArn, arbitraryLifecycleHookNotification, arbSubject).noSpaces), baos, arbitraryContext))
+
         actualLifecycleHookNotification <- deferredLifecycleHookNotification.get
         actualEcsInterpreter <- deferredEcsInterpreter.get
         actualAutoScalingInterpreter <- deferredAutoScalingInterpreter.get
+        actualSnsTopicArn <- deferredSnsTopicArn.get
       } yield {
+        actualSnsTopicArn must be_==(arbSnsTopicArn)
         actualLifecycleHookNotification must be_==(arbitraryLifecycleHookNotification)
         baos.toByteArray must beEmpty
 

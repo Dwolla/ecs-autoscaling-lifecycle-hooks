@@ -11,6 +11,7 @@ import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.ecs.EcsAlg
 import com.dwolla.aws.{autoscaling, ecs, sns}
 import com.dwolla.aws.lambda.fs2.LambdaStreamApp
+import com.dwolla.aws.sns.model.SnsTopicArn
 import fs2._
 
 import scala.concurrent.ExecutionContext
@@ -19,7 +20,7 @@ import scala.concurrent.ExecutionContext.global
 class TerminationEventHandler(ecsClientResource: Resource[IO, AmazonECSAsync],
                               autoScalingClientResource: Resource[IO, AmazonAutoScalingAsync],
                               snsClientResource: Resource[IO, AmazonSNSAsync],
-                              bridgeFactory: (EcsAlg[IO, Stream[IO, ?]], AutoScalingAlg[IO]) => LifecycleHookNotification => IO[Unit],
+                              bridgeFunction: (EcsAlg[IO, Stream[IO, ?]], AutoScalingAlg[IO]) => (SnsTopicArn, LifecycleHookNotification) => IO[Unit],
                              )(implicit contextShift: ContextShift[IO], timer: Timer[IO]) extends LambdaStreamApp[IO] {
   def this() = this(
     ecs.resource,
@@ -28,18 +29,20 @@ class TerminationEventHandler(ecsClientResource: Resource[IO, AmazonECSAsync],
     TerminationEventBridge.apply,
   )(IO.contextShift(global), IO.timer(global))
 
-  override def run(context: Context,
-                   blockingExecutionContext: ExecutionContext)
-                  (stream: Stream[IO, Byte]): Stream[IO, Byte] =
-    (for {
-      lifecycleHook <- stream.through(ParseLifecycleHookNotification[IO])
+  private def createResourcesAndProcess(stream: Stream[IO, Byte]): Stream[IO, Unit] =
+    for {
+      (topicArn, lifecycleHook) <- stream.through(ParseLifecycleHookNotification[IO])
       ecsClient <- Stream.resource(ecsClientResource)
       autoScalingClient <- Stream.resource(autoScalingClientResource)
       snsClient <- Stream.resource(snsClientResource)
       ecsInterpreter = EcsAlg[IO](ecsClient)
       autoScalingInterpreter = AutoScalingAlg[IO](autoScalingClient, snsClient)
-      bridge = bridgeFactory(ecsInterpreter, autoScalingInterpreter)
-      _ <- Stream.eval(bridge(lifecycleHook))
-    } yield ()).drain
+      bridge = bridgeFunction(ecsInterpreter, autoScalingInterpreter)
+      _ <- Stream.eval(bridge(topicArn, lifecycleHook))
+    } yield ()
 
+  override def run(context: Context,
+                   blockingExecutionContext: ExecutionContext)
+                  (stream: Stream[IO, Byte]): Stream[IO, Byte] =
+    createResourcesAndProcess(stream).drain
 }

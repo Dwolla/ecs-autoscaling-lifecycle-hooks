@@ -2,10 +2,12 @@ package com.dwolla.aws.sns
 
 import java.time.Instant
 
+import cats.implicits._
 import io.circe._
 import io.circe.generic.extras.Configuration
 import io.circe.generic.extras.semiauto._
 import io.circe.optics.JsonPath._
+import shapeless.tag.@@
 
 package object model {
   private[model] implicit val config: Configuration = Configuration(
@@ -16,6 +18,13 @@ package object model {
   )
 
   val recordsLens: Json => List[SnsRecord] = root.Records.each.as[SnsRecord].getAll
+
+  type SnsTopicArn = String @@ SnsTopicArnTag
+
+  val tagSnsTopicArn: String => SnsTopicArn = shapeless.tag[SnsTopicArnTag][String]
+
+  implicit val snsTopicArnEncoder: Encoder[SnsTopicArn] = Encoder[String].narrow
+  implicit val snsTopicArnDecoder: Decoder[SnsTopicArn] = Decoder[String].map(tagSnsTopicArn)
 }
 
 package model {
@@ -32,8 +41,8 @@ package model {
 
   case class SnsMessage(`type`: String,
                         messageId: String,
-                        topicArn: String,
-                        subject: String,
+                        topicArn: SnsTopicArn,
+                        subject: Option[String],
                         message: String,
                         timestamp: Instant,
                        )
@@ -42,4 +51,6 @@ package model {
     implicit val snsMessageEncoder: Encoder[SnsMessage] = deriveEncoder[SnsMessage]
     implicit val snsMessageDecoder: Decoder[SnsMessage] = deriveDecoder[SnsMessage]
   }
+
+  trait SnsTopicArnTag
 }

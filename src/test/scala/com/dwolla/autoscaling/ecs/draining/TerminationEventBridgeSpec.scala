@@ -8,6 +8,7 @@ import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.ec2.model.Ec2InstanceId
 import com.dwolla.aws.ecs._
 import com.dwolla.aws.ecs.model._
+import com.dwolla.aws.sns.model.SnsTopicArn
 import org.specs2.ScalaCheck
 import org.specs2.matcher.{IOImplicits, IOMatchers}
 import org.specs2.mutable.Specification
@@ -16,10 +17,10 @@ class TerminationEventBridgeSpec extends Specification with ScalaCheck with IOMa
 
   "TerminationEventBridge" should {
     "mark a non-draining instance as draining and pause and recurse" >> {
-      prop { (arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
+      prop { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
         for {
           deferredDrainInstanceArgs <- Deferred[IO, (ClusterArn, ContainerInstance)]
-          deferredPauseAndRecurse <- Deferred[IO, Unit]
+          deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification)]
           expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerStatus.Active)
 
           ecsAlg = new TestEcsAlg {
@@ -30,23 +31,26 @@ class TerminationEventBridgeSpec extends Specification with ScalaCheck with IOMa
           }
 
           autoScalingAlg = new TestAutoScalingAlg {
-            override def pauseAndRecurse: IO[Unit] = deferredPauseAndRecurse.complete(())
+            override def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): IO[Unit] =
+              deferredPauseAndRecurse.complete((topic, lifecycleHookNotification))
           }
 
-          _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbLifecycleHookNotification)
+          _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbSnsTopicArn, arbLifecycleHookNotification)
 
           (drainedClusterId, drainedContainerInstance) <- deferredDrainInstanceArgs.get
-          () <- deferredPauseAndRecurse.get
+          (topic, lifecycleHook) <- deferredPauseAndRecurse.get
         } yield {
           drainedClusterId must be_==(arbClusterArn)
           drainedContainerInstance must be_==(ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerStatus.Active))
+          topic must be_==(arbSnsTopicArn)
+          lifecycleHook must be_==(arbLifecycleHookNotification)
       }}
     }
 
     "pause and recurse if a draining instance still has tasks" >> {
-      prop { (arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
+      prop { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
         for {
-          deferredPauseAndRecurse <- Deferred[IO, String]
+          deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification)]
           expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerStatus.Draining)
 
           ecsAlg = new TestEcsAlg {
@@ -55,20 +59,22 @@ class TerminationEventBridgeSpec extends Specification with ScalaCheck with IOMa
           }
 
           autoScalingAlg = new TestAutoScalingAlg {
-            override def pauseAndRecurse: IO[Unit] = deferredPauseAndRecurse.complete("success")
+            override def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): IO[Unit] =
+              deferredPauseAndRecurse.complete((topic, lifecycleHookNotification))
           }
 
-          _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbLifecycleHookNotification)
+          _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbSnsTopicArn, arbLifecycleHookNotification)
 
-          paused <- deferredPauseAndRecurse.get
+          (topic, lifecycleHook) <- deferredPauseAndRecurse.get
         } yield {
-          paused must be_==("success")
+          topic must be_==(arbSnsTopicArn)
+          lifecycleHook must be_==(arbLifecycleHookNotification)
         }
       }
     }
 
     "continue autoscaling if instance has no running tasks" >> {
-      prop { (arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
+      prop { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
         for {
           deferredLifecycleHookNotification <- Deferred[IO, LifecycleHookNotification]
           expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 0.asInstanceOf[TaskCount], ContainerStatus.Draining)
@@ -83,7 +89,7 @@ class TerminationEventBridgeSpec extends Specification with ScalaCheck with IOMa
               deferredLifecycleHookNotification.complete(l)
           }
 
-          _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbLifecycleHookNotification)
+          _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbSnsTopicArn, arbLifecycleHookNotification)
 
           continuedLifecycleHook <- deferredLifecycleHookNotification.get
         } yield {
