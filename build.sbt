@@ -15,18 +15,33 @@ lazy val root = (project in file("."))
       Resolver.bintrayRepo("dwolla", "maven")
     ),
     libraryDependencies ++= {
+      val circeVersion = "0.11.1"
       Seq(
-        "com.dwolla" %% "scala-cloudformation-custom-resource" % "4.0.0-SNAPSHOT",
-        "com.dwolla" %% "fs2-aws" % "1.3.0",
+        "com.dwolla" %% "fs2-aws" % "2.0.0-M3",
         "com.amazonaws" % "aws-java-sdk-ecs" % awsSdkVersion,
         "com.amazonaws" % "aws-java-sdk-autoscaling" % awsSdkVersion,
         "com.amazonaws" % "aws-java-sdk-kms" % awsSdkVersion,
         "com.amazonaws" % "aws-java-sdk-sns" % awsSdkVersion,
-        "org.specs2" %% "specs2-core" % specs2Version % Test,
-        "org.specs2" %% "specs2-mock" % specs2Version % Test,
-        "org.specs2" %% "specs2-matcher-extra" % specs2Version % Test,
-        "com.dwolla" %% "testutils-specs2" % "1.11.0" % Test exclude("ch.qos.logback", "logback-classic")
-      )
+        "com.amazonaws" % "aws-lambda-java-core" % "1.1.0",
+        "com.amazonaws" % "aws-lambda-java-log4j2" % "1.0.0",
+        "com.amazonaws" % "aws-lambda-java-events" % "2.2.5",
+        "io.circe" %% "circe-fs2" % "0.11.0",
+        "io.circe" %% "circe-optics" % "0.11.0",
+        "io.circe" %% "circe-generic-extras" % circeVersion,
+      ) ++ Seq(
+        "org.specs2" %% "specs2-core" % specs2Version,
+        "org.specs2" %% "specs2-mock" % specs2Version,
+        "org.specs2" %% "specs2-matcher-extra" % specs2Version,
+        "org.specs2" %% "specs2-cats" % specs2Version,
+        "org.specs2" %% "specs2-scalacheck" % specs2Version,
+        "com.dwolla" %% "scala-aws-utils-testkit" % "1.6.1",
+        "org.scalacheck" %% "scalacheck" % "1.14.0",
+        "com.github.alexarchambault" %% "scalacheck-shapeless_1.14" % "1.2.0",
+        "io.chrisdavenport" %% "cats-scalacheck" % "0.1.0",
+        "io.circe" %% "circe-literal" % circeVersion,
+        "com.47deg" %% "scalacheck-toolbox-datetime" % "0.2.5",
+        "org.typelevel" %% "cats-effect-laws" % "1.2.0",
+      ).map(_ % Test)
     },
   )
   .settings(commonSettings: _*)
