@@ -20,7 +20,6 @@ lazy val root = (project in file("."))
         "com.dwolla" %% "fs2-aws" % "2.0.0-M3",
         "com.amazonaws" % "aws-java-sdk-ecs" % awsSdkVersion,
         "com.amazonaws" % "aws-java-sdk-autoscaling" % awsSdkVersion,
-        "com.amazonaws" % "aws-java-sdk-kms" % awsSdkVersion,
         "com.amazonaws" % "aws-java-sdk-sns" % awsSdkVersion,
         "com.amazonaws" % "aws-lambda-java-core" % "1.1.0",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.0.0",
@@ -54,11 +53,15 @@ lazy val stack: Project = (project in file("stack"))
   .settings(
     resolvers ++= Seq(Resolver.jcenterRepo),
     libraryDependencies ++= {
+      val awscdkVersion = "0.24.1"
       Seq(
-        "com.monsanto.arch" %% "cloud-formation-template-generator" % "3.8.1",
-        "org.specs2" %% "specs2-core" % specs2Version % "test,it",
-        "com.amazonaws" % "aws-java-sdk-cloudformation" % awsSdkVersion % IntegrationTest,
-        "com.dwolla" %% "scala-aws-utils" % "1.6.1" % IntegrationTest withSources()
+        "software.amazon.awscdk" % "ecs" % awscdkVersion,
+        "software.amazon.awscdk" % "sns" % awscdkVersion,
+        "software.amazon.awscdk" % "lambda" % awscdkVersion,
+        "software.amazon.awscdk" % "autoscaling" % awscdkVersion,
+        "org.typelevel" %% "cats-effect" % "1.2.0",
+        "io.circe" %% "circe-optics" % "0.11.0",
+        "co.fs2" %% "fs2-io" % "1.0.3",
       )
     },
     stackName := (name in root).value,
@@ -68,13 +71,7 @@ lazy val stack: Project = (project in file("stack"))
     ),
     awsAccountId := sys.props.get("AWS_ACCOUNT_ID"),
     awsRoleName := Option("cloudformation/deployer/cloudformation-deployer"),
-    scalacOptions --= Seq(
-      "-Xlint:missing-interpolator",
-      "-Xlint:option-implicit",
-    ),
   )
-  .configs(IntegrationTest)
-  .settings(Defaults.itSettings: _*)
   .enablePlugins(CloudFormationStack)
   .dependsOn(root)
 
