@@ -9,7 +9,7 @@ import cats.implicits._
 import com.amazonaws.handlers.AsyncHandler
 import com.amazonaws.services.ecs.AmazonECSAsync
 import com.amazonaws.services.ecs.model.{ContainerInstance => AwsContainerInstance, _}
-import com.dwolla.RandomChunks
+import com.dwolla.{NoOpLogger, RandomChunks}
 import com.dwolla.aws.ArbitraryInstances._
 import com.dwolla.aws.NextPageTokens._
 import com.dwolla.aws.ecs.model.ContainerStatus.Draining
@@ -22,6 +22,8 @@ import org.specs2.mutable.Specification
 import scala.collection.JavaConverters._
 
 class EcsAlgImplSpec extends Specification with ScalaCheck with IOMatchers with IOImplicits {
+
+  implicit val logger = NoOpLogger[IO]
 
   def fakeECSAsync(arbCluster: ArbitraryCluster): AmazonECSAsync = new FakeECSAsync {
     private def listClustersResponses(arbCluster: ArbitraryCluster): Map[Option[String], ListClustersResult] = {

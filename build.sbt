@@ -16,6 +16,7 @@ lazy val root = (project in file("."))
     ),
     libraryDependencies ++= {
       val circeVersion = "0.11.1"
+      val log4j2Version = "2.11.2"
       Seq(
         "com.dwolla" %% "fs2-aws" % "2.0.0-M3",
         "com.amazonaws" % "aws-java-sdk-ecs" % awsSdkVersion,
@@ -24,9 +25,13 @@ lazy val root = (project in file("."))
         "com.amazonaws" % "aws-lambda-java-core" % "1.1.0",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.0.0",
         "com.amazonaws" % "aws-lambda-java-events" % "2.2.5",
+        "org.apache.logging.log4j" % "log4j-api" % log4j2Version,
+        "org.apache.logging.log4j" % "log4j-core" % log4j2Version,
+        "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4j2Version,
         "io.circe" %% "circe-fs2" % "0.11.0",
         "io.circe" %% "circe-optics" % "0.11.0",
         "io.circe" %% "circe-generic-extras" % circeVersion,
+        "io.chrisdavenport" %% "log4cats-slf4j" % "0.3.0",
       ) ++ Seq(
         "org.specs2" %% "specs2-core" % specs2Version,
         "org.specs2" %% "specs2-mock" % specs2Version,

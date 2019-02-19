@@ -6,8 +6,9 @@ import com.dwolla.aws.autoscaling.AutoScalingAlg
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.ecs.EcsAlg
 import com.dwolla.aws.sns.model.SnsTopicArn
+import io.chrisdavenport.log4cats.Logger
 
-class TerminationEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G], AutoScaling: AutoScalingAlg[F]) {
+class TerminationEventBridge[F[_] : Monad : Logger, G[_]](ECS: EcsAlg[F, G], AutoScaling: AutoScalingAlg[F]) {
   private val F = Applicative[F]
 
   def apply(topic: SnsTopicArn, lifecycleHook: LifecycleHookNotification): F[Unit] =
@@ -23,6 +24,6 @@ class TerminationEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G], AutoScaling:
 }
 
 object TerminationEventBridge {
-  def apply[F[_] : Monad, G[_]](ecsAlg: EcsAlg[F, G], autoScalingAlg: AutoScalingAlg[F]): (SnsTopicArn, LifecycleHookNotification) => F[Unit] =
+  def apply[F[_] : Monad : Logger, G[_]](ecsAlg: EcsAlg[F, G], autoScalingAlg: AutoScalingAlg[F]): (SnsTopicArn, LifecycleHookNotification) => F[Unit] =
     new TerminationEventBridge(ecsAlg, autoScalingAlg).apply
 }

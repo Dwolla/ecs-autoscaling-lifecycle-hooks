@@ -10,6 +10,7 @@ import com.dwolla.aws.ec2.model.{Ec2InstanceId, tagEc2InstanceId}
 import com.dwolla.aws.ecs.model._
 import com.dwolla.fs2aws._
 import fs2._
+import _root_.io.chrisdavenport.log4cats._
 
 import scala.collection.JavaConverters._
 
@@ -24,11 +25,11 @@ abstract class EcsAlg[F[_] : Monad, G[_]] {
 }
 
 object EcsAlg {
-  def apply[F[_] : Effect](ecsClient: AmazonECSAsync): EcsAlg[F, Stream[F, ?]] =
+  def apply[F[_] : Effect : Logger](ecsClient: AmazonECSAsync): EcsAlg[F, Stream[F, ?]] =
     new EcsAlgImpl[F](ecsClient)
 }
 
-class EcsAlgImpl[F[_] : Effect](ecsClient: AmazonECSAsync) extends EcsAlg[F, Stream[F, ?]] {
+class EcsAlgImpl[F[_] : Effect : Logger](ecsClient: AmazonECSAsync) extends EcsAlg[F, Stream[F, ?]] {
   override def listClusterArns: Stream[F, ClusterArn] =
     listClustersRequest.fetchAll[F](ecsClient.listClustersAsync)(_.getClusterArns.asScala.map(tagClusterArn))
 
@@ -48,15 +49,16 @@ class EcsAlgImpl[F[_] : Effect](ecsClient: AmazonECSAsync) extends EcsAlg[F, Str
     (for {
       cluster <- listClusterArns
       instance <- listContainerInstances(cluster).filter(_.ec2InstanceId == ec2InstanceId)
-    } yield cluster -> instance).compile.last
+    } yield cluster -> instance).compile.last.flatTap(ec2Instance => Logger[F].info(s"EC2 Instance search results: $ec2Instance"))
 
   override def drainInstanceImpl(cluster: ClusterArn, ci: ContainerInstance): F[Unit] =
-    new UpdateContainerInstancesStateRequest()
-      .withCluster(cluster)
-      .withContainerInstances(ci.containerInstanceId)
-      .withStatus(DRAINING)
-      .executeVia[F](ecsClient.updateContainerInstancesStateAsync)
-      .void
+    Logger[F].info(s"draining instance $ci in cluster $cluster") >>
+      new UpdateContainerInstancesStateRequest()
+        .withCluster(cluster)
+        .withContainerInstances(ci.containerInstanceId)
+        .withStatus(DRAINING)
+        .executeVia[F](ecsClient.updateContainerInstancesStateAsync)
+        .void
 
   private def listClustersRequest: () => ListClustersRequest =
     () => new ListClustersRequest()

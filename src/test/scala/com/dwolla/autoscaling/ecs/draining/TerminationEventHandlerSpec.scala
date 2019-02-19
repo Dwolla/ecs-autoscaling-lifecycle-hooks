@@ -14,6 +14,7 @@ import com.amazonaws.services.ecs.model.{Cluster => _, ContainerInstance => _, R
 import com.amazonaws.services.lambda.runtime.Context
 import com.amazonaws.services.sns.AmazonSNSAsync
 import com.amazonaws.util.StringInputStream
+import com.dwolla.NoOpLogger
 import com.dwolla.aws.ArbitraryInstances._
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.autoscaling.{AutoScalingAlg, AutoScalingAlgImpl}
@@ -26,6 +27,8 @@ import org.specs2.mock.Mockito
 import org.specs2.mutable.Specification
 
 class TerminationEventHandlerSpec extends Specification with IOMatchers with IOImplicits with Matchers with ScalaCheck with Mockito {
+  implicit val logger = NoOpLogger[IO]
+
   private def snsMessage[T: Encoder](topic: SnsTopicArn, detail: T, maybeSubject: Option[String]): Json =
     snsMessage(topic.asJson, detail.asJson, maybeSubject.asJson)
 

@@ -9,6 +9,7 @@ import com.amazonaws.services.autoscaling.AmazonAutoScalingAsync
 import com.amazonaws.services.autoscaling.model._
 import com.amazonaws.services.sns.AmazonSNSAsync
 import com.amazonaws.services.sns.model.{PublishRequest, PublishResult}
+import com.dwolla.NoOpLogger
 import com.dwolla.aws.ArbitraryInstances._
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.sns.FakeSNSAsync
@@ -21,6 +22,8 @@ import org.specs2.mutable.Specification
 import scala.concurrent.duration._
 
 class AutoScalingAlgImplSpec extends Specification with ScalaCheck with IOMatchers with IOImplicits {
+
+  implicit val logger = NoOpLogger[IO]
 
   "AutoScalingAlgImpl" should {
 
@@ -73,7 +76,7 @@ class AutoScalingAlgImplSpec extends Specification with ScalaCheck with IOMatche
           }.flatMap(mvarPublishRequest.put)
         }
 
-        cut = new AutoScalingAlgImpl[IO](null, snsClient)(Async[IO], context.timer[IO])
+        cut = new AutoScalingAlgImpl[IO](null, snsClient)(Async[IO], context.timer[IO], NoOpLogger[IO])
         fiber <- cut.pauseAndRecurse(arbSnsTopicArn, arbLifecycleHookNotification).attempt.start(context.contextShift[IO])
 
         _ <- IO(context.tick(4.seconds))

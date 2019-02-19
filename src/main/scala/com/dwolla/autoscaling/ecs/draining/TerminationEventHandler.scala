@@ -1,5 +1,6 @@
 package com.dwolla.autoscaling.ecs.draining
 
+import cats._
 import cats.effect._
 import com.amazonaws.services.autoscaling.AmazonAutoScalingAsync
 import com.amazonaws.services.ecs.AmazonECSAsync
@@ -9,9 +10,10 @@ import com.amazonaws.services.sns.AmazonSNSAsync
 import com.dwolla.aws.autoscaling.AutoScalingAlg
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.ecs.EcsAlg
-import com.dwolla.aws.{autoscaling, ecs, sns}
 import com.dwolla.aws.lambda.fs2.LambdaStreamApp
 import com.dwolla.aws.sns.model.SnsTopicArn
+import com.dwolla.aws.{autoscaling, ecs, sns}
+import io.chrisdavenport.log4cats._
 import fs2._
 
 import scala.concurrent.ExecutionContext
@@ -21,13 +23,13 @@ class TerminationEventHandler(ecsClientResource: Resource[IO, AmazonECSAsync],
                               autoScalingClientResource: Resource[IO, AmazonAutoScalingAsync],
                               snsClientResource: Resource[IO, AmazonSNSAsync],
                               bridgeFunction: (EcsAlg[IO, Stream[IO, ?]], AutoScalingAlg[IO]) => (SnsTopicArn, LifecycleHookNotification) => IO[Unit],
-                             )(implicit contextShift: ContextShift[IO], timer: Timer[IO]) extends LambdaStreamApp[IO] {
+                             )(implicit contextShift: ContextShift[IO], timer: Timer[IO], L: Logger[IO]) extends LambdaStreamApp[IO] {
   def this() = this(
     ecs.resource,
     autoscaling.resource,
     sns.resource,
-    TerminationEventBridge.apply,
-  )(IO.contextShift(global), IO.timer(global))
+    TerminationEventBridge.apply(_, _)(Monad[IO], com.dwolla.aws.lambda.fs2.logger[IO]),
+  )(IO.contextShift(global), IO.timer(global), com.dwolla.aws.lambda.fs2.logger[IO])
 
   private def createResourcesAndProcess(stream: Stream[IO, Byte]): Stream[IO, Unit] =
     for {

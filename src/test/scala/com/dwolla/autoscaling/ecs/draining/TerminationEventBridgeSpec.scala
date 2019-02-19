@@ -2,6 +2,7 @@ package com.dwolla.autoscaling.ecs.draining
 
 import cats.effect._
 import cats.effect.concurrent.Deferred
+import com.dwolla.NoOpLogger
 import com.dwolla.aws.ArbitraryInstances._
 import com.dwolla.aws.autoscaling._
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
@@ -14,6 +15,8 @@ import org.specs2.matcher.{IOImplicits, IOMatchers}
 import org.specs2.mutable.Specification
 
 class TerminationEventBridgeSpec extends Specification with ScalaCheck with IOMatchers with IOImplicits {
+
+  implicit val logger = NoOpLogger[IO]
 
   "TerminationEventBridge" should {
     "mark a non-draining instance as draining and pause and recurse" >> {
