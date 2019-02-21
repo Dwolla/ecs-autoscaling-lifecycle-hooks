@@ -65,10 +65,21 @@ class TerminationEventHandlerSpec extends Specification with IOMatchers with IOI
              ]
            }"""
 
+  private val testNotification =
+    json"""{
+             "AccountId": "006467937747",
+             "RequestId": "4781ed87-354a-11e9-9f76-cb62a7958e88",
+             "AutoScalingGroupARN": "arn:aws:autoscaling:us-west-2:006467937747:autoScalingGroup:3c1d7d91-2140-40b1-a8b1-c9f46e4dff13:autoScalingGroupName/ecs-default-cluster-Sandbox-EcsClusterAutoScaleGroupSandbox-CLJKMQ0V93DL",
+             "AutoScalingGroupName": "ecs-default-cluster-Sandbox-EcsClusterAutoScaleGroupSandbox-CLJKMQ0V93DL",
+             "Service": "AWS Auto Scaling",
+             "Event": "autoscaling:TEST_NOTIFICATION",
+             "Time": "2019-02-20T20:01:15.747Z"
+           }"""
+
   "TerminationEventHandler" should {
     "handle a message" >> { prop { (arbSnsTopicArn: SnsTopicArn,
-                                    arbitraryContext: Context,
-                                    arbitraryLifecycleHookNotification: LifecycleHookNotification,
+                                    arbContext: Context,
+                                    arbLifecycleHookNotification: LifecycleHookNotification,
                                     arbSubject: Option[String],
                                    ) =>
       val baos = new ByteArrayOutputStream()
@@ -94,7 +105,7 @@ class TerminationEventHandlerSpec extends Specification with IOMatchers with IOI
           } yield ()
         )
 
-        _ <- IO(eventHandler.handleRequest(new StringInputStream(snsMessage(arbSnsTopicArn, arbitraryLifecycleHookNotification, arbSubject).noSpaces), baos, arbitraryContext))
+        _ <- IO(eventHandler.handleRequest(new StringInputStream(snsMessage(arbSnsTopicArn, arbLifecycleHookNotification, arbSubject).noSpaces), baos, arbContext))
 
         actualLifecycleHookNotification <- deferredLifecycleHookNotification.get
         actualEcsInterpreter <- deferredEcsInterpreter.get
@@ -102,11 +113,34 @@ class TerminationEventHandlerSpec extends Specification with IOMatchers with IOI
         actualSnsTopicArn <- deferredSnsTopicArn.get
       } yield {
         actualSnsTopicArn must be_==(arbSnsTopicArn)
-        actualLifecycleHookNotification must be_==(arbitraryLifecycleHookNotification)
+        actualLifecycleHookNotification must be_==(arbLifecycleHookNotification)
         baos.toByteArray must beEmpty
 
         actualEcsInterpreter must beAnInstanceOf[EcsAlgImpl[IO]]
         actualAutoScalingInterpreter must beAnInstanceOf[AutoScalingAlgImpl[IO]]
+      }
+    }}
+
+    "handle a test notification message" >> { prop { (arbSnsTopicArn: SnsTopicArn,
+                                                      arbContext: Context,
+                                                      arbSubject: Option[String],
+                                                     ) =>
+      val baos = new ByteArrayOutputStream()
+      val ecsClient: AmazonECSAsync = mock[AmazonECSAsync]
+      val autoScalingClient: AmazonAutoScalingAsync = mock[AmazonAutoScalingAsync]
+      val snsClient = mock[AmazonSNSAsync]
+
+      val eventHandler = new TerminationEventHandler(
+        Resource.pure(ecsClient),
+        Resource.pure(autoScalingClient),
+        Resource.pure(snsClient),
+        (_, _) => (_, _) => IO.unit
+      )
+
+      for {
+        _ <- IO(eventHandler.handleRequest(new StringInputStream(snsMessage(arbSnsTopicArn, testNotification, arbSubject).noSpaces), baos, arbContext))
+      } yield {
+        baos.toByteArray must beEmpty
       }
     }}
 

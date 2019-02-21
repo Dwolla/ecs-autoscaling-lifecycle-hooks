@@ -19,10 +19,14 @@ package object model {
     discriminator = None,
   )
 
+  private[model] implicit def taggedStringEncoder[T]: Encoder[String @@ T] = Encoder[String].narrow
+  private[model] implicit def taggedStringDecoder[T]: Decoder[String @@ T] = Decoder[String].map(_.asInstanceOf[String @@ T])
+
 }
 
 package model {
 
+  sealed trait AutoScalingSnsMessage
   case class LifecycleHookNotification(service: String,
                                        time: Instant,
                                        requestId: String,
@@ -33,13 +37,29 @@ package model {
                                        EC2InstanceId: Ec2InstanceId,
                                        lifecycleTransition: String,
                                        notificationMetadata: Option[String],
-                                      )
+                                      ) extends AutoScalingSnsMessage
+  case class TestNotification(accountId: AccountId,
+                              requestId: String,
+                              autoScalingGroupARN: String,
+                              autoScalingGroupName: String,
+                              service: String,
+                              event: String,
+                              time: Instant,
+                             ) extends AutoScalingSnsMessage
+
 
   object LifecycleHookNotification {
-    implicit def taggedStringEncoder[T]: Encoder[String @@ T] = Encoder[String].narrow
-    implicit def taggedStringDecoder[T]: Decoder[String @@ T] = Decoder[String].map(_.asInstanceOf[String @@ T])
-
     implicit val lifecycleHookNotificationEncoder: Encoder[LifecycleHookNotification] = deriveEncoder[LifecycleHookNotification]
     implicit val lifecycleHookNotificationDecoder: Decoder[LifecycleHookNotification] = deriveDecoder[LifecycleHookNotification]
+  }
+  object TestNotification {
+    implicit val testNotificationEncoder: Encoder[TestNotification] = deriveEncoder[TestNotification]
+    implicit val testNotificationDecoder: Decoder[TestNotification] = deriveDecoder[TestNotification]
+  }
+
+  object AutoScalingSnsMessage {
+    implicit val autoScalingSnsMessageDecoder: Decoder[AutoScalingSnsMessage] =
+      Decoder[LifecycleHookNotification].widen[AutoScalingSnsMessage]
+        .or(Decoder[TestNotification].widen[AutoScalingSnsMessage])
   }
 }
