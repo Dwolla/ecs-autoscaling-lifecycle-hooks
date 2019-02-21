@@ -1,6 +1,5 @@
 package com.dwolla.aws.autoscaling
 
-import cats._
 import cats.effect._
 import cats.implicits._
 import com.amazonaws.services.autoscaling.AmazonAutoScalingAsync
@@ -15,9 +14,8 @@ import io.chrisdavenport.log4cats._
 
 import scala.concurrent.duration._
 
-abstract class AutoScalingAlg[F[_] : Monad] {
+trait AutoScalingAlg[F[_]] {
   def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): F[Unit]
-
   def continueAutoScaling(l: LifecycleHookNotification): F[Unit]
 }
 

@@ -14,7 +14,7 @@ import _root_.io.chrisdavenport.log4cats._
 
 import scala.collection.JavaConverters._
 
-abstract class EcsAlg[F[_] : Monad, G[_]] {
+abstract class EcsAlg[F[_] : Applicative, G[_]] {
   def listClusterArns: G[ClusterArn]
   def listContainerInstances(cluster: ClusterArn): G[ContainerInstance]
   def findEc2Instance(ec2InstanceId: Ec2InstanceId): F[Option[(ClusterArn, ContainerInstance)]]
