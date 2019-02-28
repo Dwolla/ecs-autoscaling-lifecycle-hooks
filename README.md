@@ -1,6 +1,6 @@
 # Auto Scaling ECS Instance Draining Lambda
 
-[![Travis](https://img.shields.io/travis/Dwolla/autoscaling-ecs-draining-lambda.svg?style=flat-square)](https://travis-ci.org/Dwolla/cloudflare-lambda)
+[![Travis](https://img.shields.io/travis/Dwolla/autoscaling-ecs-draining-lambda.svg?style=flat-square)](https://travis-ci.org/Dwolla/autoscaling-ecs-draining-lambda)
 ![license](https://img.shields.io/github/license/Dwolla/autoscaling-ecs-draining-lambda.svg?style=flat-square)
 
 AWS Lambda function to use [Auto Scaling Lifecycle Hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html) to drain ECS instances when an Auto Scaling Group scales in.
