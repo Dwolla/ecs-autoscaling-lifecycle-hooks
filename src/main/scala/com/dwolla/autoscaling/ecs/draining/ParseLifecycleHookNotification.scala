@@ -1,24 +1,22 @@
 package com.dwolla.autoscaling.ecs.draining
 
+import cats.*
+import cats.syntax.all.*
 import com.dwolla.aws.autoscaling.model.{AutoScalingSnsMessage, LifecycleHookNotification, TestNotification}
-import com.dwolla.aws.sns.model.{SnsTopicArn, recordsLens}
-import fs2.{Pipe, RaiseThrowable, Stream}
-import io.chrisdavenport.log4cats.Logger
-import io.circe.fs2.{byteStreamParser, decoder, stringStreamParser}
+import com.dwolla.aws.sns.model.SnsTopicArn
+import feral.lambda.events.SnsMessage
+import org.typelevel.log4cats.LoggerFactory
 
 object ParseLifecycleHookNotification {
-
-  def apply[F[_] : RaiseThrowable : Logger]: Pipe[F, Byte, (SnsTopicArn, LifecycleHookNotification)] = s =>
+  def apply[F[_] : MonadThrow : LoggerFactory]: SnsMessage => F[Option[(SnsTopicArn, LifecycleHookNotification)]] = s =>
     for {
-      json <- s.through(byteStreamParser)
-      _ <- Stream.eval(Logger[F].info(s"Received message ${json.noSpaces}"))
-      snsRecord <- Stream.emits(recordsLens(json))
-      autoScalingMessage <- Stream.emit(snsRecord.sns.message).through(stringStreamParser).through(decoder[F, AutoScalingSnsMessage])
-      notification <- autoScalingMessage match {
+      json <- io.circe.parser.parse(s.message).liftTo[F]
+      autoScalingMessage <- json.as[AutoScalingSnsMessage].liftTo[F]
+      notification: Option[LifecycleHookNotification] <- autoScalingMessage match {
         case a: LifecycleHookNotification =>
-          Stream.emit(a)
+          a.some.pure[F]
         case TestNotification(_, requestId, _, _, _, _, _) =>
-          Stream.eval(Logger[F].info(s"ignoring TestNotification message $requestId")) >> Stream.empty
+          LoggerFactory[F].create.flatMap(_.info(s"ignoring TestNotification message $requestId")).as(None)
       }
-    } yield snsRecord.sns.topicArn -> notification
+    } yield notification.tupleLeft(SnsTopicArn(s.topicArn))
 }

@@ -1,18 +1,13 @@
 package com.dwolla.aws.ecs
 
-import cats._
-import cats.effect._
-import cats.implicits._
-import com.amazonaws.services.ecs.AmazonECSAsync
-import com.amazonaws.services.ecs.model.ContainerInstanceStatus.DRAINING
-import com.amazonaws.services.ecs.model.{ContainerInstance => _, _}
-import com.dwolla.aws.ec2.model.{Ec2InstanceId, tagEc2InstanceId}
-import com.dwolla.aws.ecs.model._
-import com.dwolla.fs2aws._
-import fs2._
-import _root_.io.chrisdavenport.log4cats._
-
-import scala.collection.JavaConverters._
+import cats.*
+import cats.syntax.all.*
+import com.amazonaws.ecs.{ContainerInstanceStatus, ECS}
+import com.dwolla.aws.ec2.model.*
+import com.dwolla.aws.ecs.model.*
+import com.dwolla.fs2utils.Pagination
+import fs2.*
+import org.typelevel.log4cats.{Logger, LoggerFactory}
 
 abstract class EcsAlg[F[_] : Applicative, G[_]] {
   def listClusterArns: G[ClusterArn]
@@ -25,48 +20,53 @@ abstract class EcsAlg[F[_] : Applicative, G[_]] {
 }
 
 object EcsAlg {
-  def apply[F[_] : Effect : Logger](ecsClient: AmazonECSAsync): EcsAlg[F, Stream[F, ?]] =
-    new EcsAlgImpl[F](ecsClient)
-}
+  def apply[F[_] : Monad : LoggerFactory](ecs: ECS[F])
+                                         (implicit C: Compiler[F, F]): EcsAlg[F, Stream[F, *]] = new EcsAlg[F, Stream[F, *]] {
+    override def listClusterArns: Stream[F, ClusterArn] =
+      Pagination.offsetUnfoldChunkEval {
+        ecs
+          .listClusters(_: Option[String], None)
+          .map { resp =>
+            resp.clusterArns.map(Chunk.iterable(_)).getOrElse(Chunk.empty) -> resp.nextToken
+          }
+      }
+        .map(ClusterArn(_))
 
-class EcsAlgImpl[F[_] : Effect : Logger](ecsClient: AmazonECSAsync) extends EcsAlg[F, Stream[F, ?]] {
-  override def listClusterArns: Stream[F, ClusterArn] =
-    listClustersRequest.fetchAll[F](ecsClient.listClustersAsync)(_.getClusterArns.asScala.map(tagClusterArn))
+    override def listContainerInstances(cluster: ClusterArn): Stream[F, ContainerInstance] =
+      Pagination.offsetUnfoldChunkEval { (nextToken: Option[String]) =>
+        ecs
+          .listContainerInstances(cluster.value.some, nextToken = nextToken)
+          .map { resp =>
+            resp.containerInstanceArns.map(Chunk.iterable(_)).getOrElse(Chunk.empty) -> resp.nextToken
+          }
+      }
+        .chunkN(100)
+        .map(_.toList)
+        .evalMap(ecs.describeContainerInstances(_, cluster = cluster.value.some))
+        .map(_.containerInstances.map(Chunk.iterable(_)).getOrElse(Chunk.empty))
+        .unchunks
+        .map { ci =>
+          (ci.containerInstanceArn.map(ContainerInstanceId(_)), ci.ec2InstanceId.map(Ec2InstanceId(_)), ci.status.flatMap(ContainerStatus.fromStatus))
+            .mapN(ContainerInstance(_, _, TaskCount(ci.runningTasksCount), _))
+        }
+        .unNone
 
-  override def listContainerInstances(cluster: ClusterArn): Stream[F, ContainerInstance] =
-    for {
-      containerInstanceArns <- listContainerInstancesRequest(cluster).fetchAll[F](ecsClient.listContainerInstancesAsync)(_.getContainerInstanceArns.asScala.map(tagContainerInstanceId)).chunkN(100, allowFewer = true)
-      containerInstanceResult <- Stream.eval(describeContainerInstancesRequest(cluster, containerInstanceArns).executeVia[F](ecsClient.describeContainerInstancesAsync))
-      ci <- Stream.emits(containerInstanceResult.getContainerInstances.asScala)
-    } yield ContainerInstance(
-      tagContainerInstanceId(ci.getContainerInstanceArn),
-      tagEc2InstanceId(ci.getEc2InstanceId),
-      tagTaskCount(ci.getRunningTasksCount),
-      ContainerStatus.fromStatus(ci.getStatus),
-    )
+    override def findEc2Instance(ec2InstanceId: Ec2InstanceId): F[Option[(ClusterArn, ContainerInstance)]] =
+      LoggerFactory[F].create.flatMap { implicit L =>
+        listClusterArns
+          .mproduct(listContainerInstances(_).filter(_.ec2InstanceId == ec2InstanceId))
+          .compile
+          .last
+          .flatTap { ec2Instance =>
+            Logger[F].info(s"EC2 Instance search results: $ec2Instance")
+          }
+      }
 
-  override def findEc2Instance(ec2InstanceId: Ec2InstanceId): F[Option[(ClusterArn, ContainerInstance)]] =
-    (for {
-      cluster <- listClusterArns
-      instance <- listContainerInstances(cluster).filter(_.ec2InstanceId == ec2InstanceId)
-    } yield cluster -> instance).compile.last.flatTap(ec2Instance => Logger[F].info(s"EC2 Instance search results: $ec2Instance"))
-
-  override def drainInstanceImpl(cluster: ClusterArn, ci: ContainerInstance): F[Unit] =
-    Logger[F].info(s"draining instance $ci in cluster $cluster") >>
-      new UpdateContainerInstancesStateRequest()
-        .withCluster(cluster)
-        .withContainerInstances(ci.containerInstanceId)
-        .withStatus(DRAINING)
-        .executeVia[F](ecsClient.updateContainerInstancesStateAsync)
-        .void
-
-  private def listClustersRequest: () => ListClustersRequest =
-    () => new ListClustersRequest()
-
-  private def listContainerInstancesRequest(cluster: ClusterArn): () => ListContainerInstancesRequest =
-    () => new ListContainerInstancesRequest().withCluster(cluster)
-
-  private def describeContainerInstancesRequest(cluster: ClusterArn, containerInstanceIds: Chunk[ContainerInstanceId]) =
-    new DescribeContainerInstancesRequest().withCluster(cluster).withContainerInstances(containerInstanceIds.toList: _*)
-
+    override protected def drainInstanceImpl(cluster: ClusterArn, ci: ContainerInstance): F[Unit] =
+      LoggerFactory[F].create.flatMap { implicit L =>
+        Logger[F].info(s"draining instance $ci in cluster $cluster") >>
+          ecs.updateContainerInstancesState(List(ci.containerInstanceId.value), ContainerInstanceStatus.DRAINING, cluster.value.some)
+            .void
+      }
+  }
 }

@@ -1,170 +1,186 @@
 package com.dwolla.aws.ecs
 
-import java.util.concurrent.Future
+import cats.*
+import cats.data.OptionT
+import cats.effect.*
+import cats.implicits.*
+import com.amazonaws.ecs.ContainerInstanceStatus.DRAINING
+import com.amazonaws.ecs.{BoxedInteger, ContainerInstanceField, ContainerInstanceStatus, DescribeContainerInstancesResponse, ECS, ListClustersResponse, ListContainerInstancesResponse, UpdateContainerInstancesStateResponse, ContainerInstance as AwsContainerInstance}
+import com.dwolla.aws.ArbitraryInstances
+import com.dwolla.NextPageTokens.tokenForIdx
+import com.dwolla.aws.ecs.model.*
+import fs2.{Chunk, Stream}
+import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
+import org.scalacheck.effect.PropF.forAllF
+import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.noop.NoOpFactory
 
-import cats._
-import cats.effect._
-import cats.effect.concurrent.Deferred
-import cats.implicits._
-import com.amazonaws.handlers.AsyncHandler
-import com.amazonaws.services.ecs.AmazonECSAsync
-import com.amazonaws.services.ecs.model.{ContainerInstance => AwsContainerInstance, _}
-import com.dwolla.{NoOpLogger, RandomChunks}
-import com.dwolla.aws.ArbitraryInstances._
-import com.dwolla.aws.NextPageTokens._
-import com.dwolla.aws.ecs.model.ContainerStatus.Draining
-import com.dwolla.aws.ecs.model.{ClusterArn, ContainerInstance, ContainerStatus, tagClusterArn}
-import fs2.Stream
-import org.specs2.ScalaCheck
-import org.specs2.matcher.{IOImplicits, IOMatchers}
-import org.specs2.mutable.Specification
+class EcsAlgImplSpec 
+  extends CatsEffectSuite
+    with ScalaCheckEffectSuite
+    with ArbitraryInstances {
 
-import scala.collection.JavaConverters._
+  private implicit def loggerFactory[F[_] : Applicative]: LoggerFactory[F] = NoOpFactory[F]
 
-class EcsAlgImplSpec extends Specification with ScalaCheck with IOMatchers with IOImplicits {
-
-  implicit val logger = NoOpLogger[IO]
-
-  def fakeECSAsync(arbCluster: ArbitraryCluster): AmazonECSAsync = new FakeECSAsync {
-    private def listClustersResponses(arbCluster: ArbitraryCluster): Map[Option[String], ListClustersResult] = {
-      val clusterChunks = Stream.emits(arbCluster).through(RandomChunks(100)).chunks.toList
-      val calculated = clusterChunks.zipWithIndex.map {
+  def fakeECS[F[_] : ApplicativeThrow](arbCluster: ArbitraryCluster): ECS[F] = new FakeECS[F] {
+    private val listClustersResponses: Map[Option[String], ListClustersResponse] = {
+      val calculated = arbCluster.zipWithIndex.map {
         case (chunk, idx) =>
-          val result = new ListClustersResult().withClusterArns(chunk.map { case (c, _) => c.clusterArn }.toList: _*).withNextToken(idx + 1, clusterChunks.length)
+          val result = ListClustersResponse(
+            chunk.map { case (c, _) => c.clusterArn.value }.toList.some,
+            tokenForIdx(idx + 1, arbCluster.length)
+          )
 
-          tokenForIdx(idx, clusterChunks.length) -> result
+          tokenForIdx(idx, arbCluster.length) -> result
       }
 
-      Map(calculated: _*).withDefaultValue(new ListClustersResult())
+      Map(calculated *).withDefaultValue(ListClustersResponse())
     }
 
-    private def listContainerInstancesResponses(arbCluster: ArbitraryCluster): Map[(ClusterArn, Option[String]), ListContainerInstancesResult] =
-      Map(arbCluster.flatMap {
-        case (c, cis) =>
-          val ciChunks = Stream.emits(cis)
-            .through(RandomChunks(100))
-            .chunks
-            .toList
-          ciChunks
-            .zipWithIndex
-            .map {
-              case (chunk, idx) =>
-                val request = c.clusterArn -> tokenForIdx(idx, ciChunks.length)
-                val result = new ListContainerInstancesResult().withContainerInstanceArns(chunk.map(_.containerInstanceId).toList: _*).withNextToken(idx + 1, ciChunks.length)
+    private val listContainerInstancesResponses: Map[(Option[ClusterArn], Option[String]), ListContainerInstancesResponse] =
+      Map.from {
+        arbCluster.flatMap(_.toList).flatMap {
+          case (c, ciChunks) =>
+            ciChunks
+              .zipWithIndex
+              .map {
+                case (chunk, idx) =>
+                  val request = c.clusterArn.some -> tokenForIdx(idx, ciChunks.length)
+                  val result = ListContainerInstancesResponse(
+                    containerInstanceArns = chunk.map(_.containerInstanceId.value).toList.some,
+                    nextToken = tokenForIdx(idx + 1, ciChunks.length),
+                  )
 
-                request -> result
-            }
-      }: _*).withDefaultValue(new ListContainerInstancesResult())
+                  request -> result
+              }
+        }
+      }.withDefaultValue(ListContainerInstancesResponse())
 
     private def ciToCi(ci: ContainerInstance): AwsContainerInstance =
-      new AwsContainerInstance()
-        .withContainerInstanceArn(ci.containerInstanceId)
-        .withEc2InstanceId(ci.ec2InstanceId)
-        .withRunningTasksCount(ci.runningTaskCount)
-        .withStatus(ci.status.toString)
+      AwsContainerInstance(
+        containerInstanceArn = ci.containerInstanceId.value.some,
+        ec2InstanceId = ci.ec2InstanceId.value.some,
+        runningTasksCount = ci.runningTaskCount.value,
+        status = ci.status.toString.some,
+      )
 
-    private val cachedListClustersResponses = listClustersResponses(arbCluster)
-    private val cachedListContainerInstancesResponses = listContainerInstancesResponses(arbCluster)
-    private val clusterMap: Map[ClusterArn, List[ContainerInstance]] = Foldable[List].fold(arbCluster.flatMap {
-      case (c, cis) =>
-        cis.map(ci => Map(c.clusterArn -> List(ci)))
-    })
-
-    override def listClustersAsync(req: ListClustersRequest,
-                                   asyncHandler: AsyncHandler[ListClustersRequest, ListClustersResult]): Future[ListClustersResult] = {
-      asyncHandler.onSuccess(req, cachedListClustersResponses(Option(req.getNextToken)))
-      null
+    private val clusterMap: Map[ClusterArn, List[ContainerInstance]] = Foldable[List].fold {
+      arbCluster
+        .flatMap(_.toList)
+        .flatMap {
+          case (c: Cluster, cis: List[Chunk[ContainerInstance]]) =>
+            cis
+              .flatMap(_.toList)
+              .map(ci => Map(c.clusterArn -> List(ci)))
+        }
     }
 
-    override def listContainerInstancesAsync(req: ListContainerInstancesRequest,
-                                             asyncHandler: AsyncHandler[ListContainerInstancesRequest, ListContainerInstancesResult]): Future[ListContainerInstancesResult] = {
-      asyncHandler.onSuccess(req, cachedListContainerInstancesResponses(tagClusterArn(req.getCluster) -> Option(req.getNextToken)))
-      null
+    override def listClusters(nextToken: Option[String], maxResults: Option[BoxedInteger]): F[ListClustersResponse] =
+      listClustersResponses(nextToken).pure[F]
+
+    override def listContainerInstances(cluster: Option[String],
+                                        filter: Option[String],
+                                        nextToken: Option[String],
+                                        maxResults: Option[BoxedInteger],
+                                        status: Option[ContainerInstanceStatus]): F[ListContainerInstancesResponse] = {
+      listContainerInstancesResponses(cluster.map(ClusterArn(_)) -> nextToken).pure[F]
     }
 
-    override def describeContainerInstancesAsync(req: DescribeContainerInstancesRequest,
-                                                 asyncHandler: AsyncHandler[DescribeContainerInstancesRequest, DescribeContainerInstancesResult]): Future[DescribeContainerInstancesResult] = {
-      val requestedCluster = Option(req.getCluster).getOrElse("default").asInstanceOf[ClusterArn]
+    override def describeContainerInstances(containerInstances: List[String],
+                                            cluster: Option[String],
+                                            include: Option[List[ContainerInstanceField]]): F[DescribeContainerInstancesResponse] = {
+      val requestedCluster = ClusterArn(cluster.getOrElse("default"))
       val allInstances = clusterMap.getOrElse(requestedCluster, List.empty)
-      val cis: List[ContainerInstance] = allInstances.filter(i => req.getContainerInstances.contains(i.containerInstanceId))
-      val result = new DescribeContainerInstancesResult().withContainerInstances(cis.map(ciToCi): _*)
+      val cis: List[ContainerInstance] = allInstances.filter(i => containerInstances.contains(i.containerInstanceId.value))
 
-      asyncHandler.onSuccess(req, result)
-      null
+      DescribeContainerInstancesResponse(containerInstances = cis.map(ciToCi).some).pure[F]
     }
   }
 
-  "EcsAlg" should {
-    "return all the cluster ARNs" >> prop { arbCluster: ArbitraryCluster =>
-      val testClass = EcsAlg[IO](fakeECSAsync(arbCluster))
-
-      for {
-        arns <- testClass.listClusterArns.compile.toList
-      } yield {
-        arns must be_==(arbCluster.map(tuple => tuple._1.clusterArn))
-      }
-
+  test("EcsAlg should return all the cluster ARNs") {
+    forAllF { (arbCluster: ArbitraryCluster) =>
+      EcsAlg[IO](fakeECS(arbCluster))
+        .listClusterArns
+        .compile
+        .toList
+        .map { obtained =>
+          val expected = arbCluster.flatMap(_.toList).map(tuple => tuple._1.clusterArn)
+          assertEquals(obtained, expected)
+        }
     }
+  }
 
-    "return all the container instances for the given cluster" >> prop { arbCluster: ArbitraryCluster =>
-      val testClass = EcsAlg[IO](fakeECSAsync(arbCluster))
+  test("EcsAlg should return all the container instances for the given cluster") {
+    forAllF { (arbCluster: ArbitraryCluster) =>
+      val testClass = EcsAlg[IO](fakeECS(arbCluster))
 
-      (for {
-        (expectedCluster, expectedContainerInstances) <- Stream.emits(arbCluster)
-        containerInstances <- Stream.eval(testClass.listContainerInstances(expectedCluster.clusterArn).compile.toList)
-      } yield {
-        containerInstances must be_==(expectedContainerInstances)
-      }).map(_.toResult).compile.foldMonoid
-
+      Stream.emits(arbCluster)
+        .unchunks
+        .covary[IO]
+        .evalMap { case (expectedCluster, expectedContainerInstanceChunks) =>
+          testClass
+            .listContainerInstances(expectedCluster.clusterArn)
+            .compile
+            .toList
+            .tupleRight(expectedContainerInstanceChunks.flatMap(_.toList))
+        }
+        .map { case (obtained, expected) =>
+          assertEquals(obtained, expected)
+        }
+        .compile
+        .foldMonoid
     }
+  }
 
-    "return the matching container instance when asked to search by EC2 Instance ID" >> prop { arbCluster: ArbitraryCluster =>
-      val testClass = EcsAlg[IO](fakeECSAsync(arbCluster))
-      val (expectedCluster, expectedCI) = arbCluster.find(_._2.nonEmpty).flatMap {
-        case (c, cis) => cis.lastOption.map(c -> _)
+  test("EcsAlg should return the matching container instance when asked to search by EC2 Instance ID") {
+    forAllF { (arbCluster: ArbitraryCluster) =>
+      val testClass = EcsAlg[IO](fakeECS(arbCluster))
+      val (expectedCluster, expectedCI) = arbCluster.flatMap(_.toList).find(_._2.flatMap(_.toList).nonEmpty).flatMap {
+        case (c, cis) => cis.flatMap(_.toList).lastOption.map(c -> _)
       }.getOrElse(throw new RuntimeException("test setup exception; no container instances were found in the arbitrary cluster"))
 
-      for {
-        containerInstance <- testClass.findEc2Instance(expectedCI.ec2InstanceId)
-      } yield {
-        containerInstance must beSome[(ClusterArn, ContainerInstance)].like {
-          case (actualCluster, actualCI) =>
-            actualCluster must be_==(expectedCluster.clusterArn)
-            actualCI must be_==(expectedCI)
+      OptionT(testClass.findEc2Instance(expectedCI.ec2InstanceId))
+        .fold(fail(s"findEc2Instance(${expectedCI.ec2InstanceId}) returned None")) { case (actualCluster, actualCI) =>
+          assertEquals(actualCluster, expectedCluster.clusterArn)
+          assertEquals(actualCI, expectedCI)
         }
-      }
     }
+  }
 
-    "update the given instance's status to Draining if it's not already" >> prop { (cluster: ClusterArn, ci: ContainerInstance) =>
+  test("EcsAlg should update the given instance's status to Draining if it's not already") {
+    forAllF { (cluster: ClusterArn, ci: ContainerInstance) =>
       val activeContainerInstance = ci.copy(status = ContainerStatus.Active)
 
       for {
-        deferredRequest <- Deferred[IO, UpdateContainerInstancesStateRequest]
-        fakeEcsClient <- IO.asyncF[AmazonECSAsync] { completeMock =>
-          IO.async[UpdateContainerInstancesStateRequest] { completeReq =>
-            completeMock(Right(new FakeECSAsync {
-              override def updateContainerInstancesStateAsync(req: UpdateContainerInstancesStateRequest,
-                                                              asyncHandler: AsyncHandler[UpdateContainerInstancesStateRequest, UpdateContainerInstancesStateResult]): Future[UpdateContainerInstancesStateResult] = {
-                completeReq(Right(req))
-                asyncHandler.onSuccess(req, new UpdateContainerInstancesStateResult())
-                null
-              }
-            }))
-          }.flatMap(deferredRequest.complete)
-        }
+        deferredContainerInstances <- Deferred[IO, List[ContainerInstanceId]]
+        deferredStatus <- Deferred[IO, ContainerInstanceStatus]
+        deferredCluster <- Deferred[IO, Option[ClusterArn]]
+        fakeEcsClient: ECS[IO] = new FakeECS[IO] {
+              override def updateContainerInstancesState(containerInstances: List[String],
+                                                         status: ContainerInstanceStatus,
+                                                         cluster: Option[String]): IO[UpdateContainerInstancesStateResponse] =
+                deferredContainerInstances.complete(containerInstances.map(ContainerInstanceId(_))) >>
+                  deferredStatus.complete(status) >>
+                  deferredCluster.complete(cluster.map(ClusterArn(_)))
+                    .as(UpdateContainerInstancesStateResponse())
+            }
         _ <- EcsAlg[IO](fakeEcsClient).drainInstance(cluster, activeContainerInstance)
-        completedRequest <- deferredRequest.get
+        actualContainerInstances <- deferredContainerInstances.get
+        actualStatus <- deferredStatus.get
+        actualCluster <- deferredCluster.get
       } yield {
-        completedRequest.getCluster must be_==(cluster)
-        completedRequest.getContainerInstances.asScala must contain(activeContainerInstance.containerInstanceId)
-        completedRequest.getStatus must  be_==(Draining.toString)
+        assertEquals(actualCluster, cluster.some)
+        assert(actualContainerInstances.contains(activeContainerInstance.containerInstanceId))
+        assertEquals(actualStatus, DRAINING)
       }
     }
+  }
 
-    "ignore requests to change the status of instances that are already draining" >> prop { (cluster: ClusterArn, ci: ContainerInstance) =>
+  test("EcsAlg should ignore requests to change the status of instances that are already draining") {
+    forAllF { (cluster: ClusterArn, ci: ContainerInstance) =>
       val activeContainerInstance = ci.copy(status = ContainerStatus.Draining)
 
-      EcsAlg[IO](new FakeECSAsync {}).drainInstance(cluster, activeContainerInstance) must returnOk[Unit]
+      EcsAlg[IO](new FakeECS[IO] ).drainInstance(cluster, activeContainerInstance)
     }
   }
 }

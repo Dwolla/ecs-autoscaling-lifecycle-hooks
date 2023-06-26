@@ -1,14 +1,6 @@
-package com.dwolla.aws.ec2
+package com.dwolla.aws.ec2.model
 
-import shapeless.tag._
-import shapeless.tag
+import monix.newtypes.NewtypeWrapped
 
-package object model {
-  type Ec2InstanceId = String @@ Ec2InstanceIdTag
-
-  val tagEc2InstanceId: String => Ec2InstanceId = tag[Ec2InstanceIdTag][String]
-}
-
-package model {
-  trait Ec2InstanceIdTag
-}
+type Ec2InstanceId = Ec2InstanceId.Type
+object Ec2InstanceId extends NewtypeWrapped[String]

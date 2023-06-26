@@ -1,50 +1,48 @@
 package com.dwolla.autoscaling.ecs.draining
 
-import cats._
-import cats.effect._
-import com.amazonaws.services.autoscaling.AmazonAutoScalingAsync
-import com.amazonaws.services.ecs.AmazonECSAsync
-import com.amazonaws.services.ecs.model.{ContainerInstance => _, Resource => _}
-import com.amazonaws.services.lambda.runtime.Context
-import com.amazonaws.services.sns.AmazonSNSAsync
+import cats.*
+import cats.effect.*
+import cats.syntax.all.*
+import com.amazonaws.ecs.ECS
 import com.dwolla.aws.autoscaling.AutoScalingAlg
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.ecs.EcsAlg
-import com.dwolla.aws.lambda.fs2.LambdaStreamApp
 import com.dwolla.aws.sns.model.SnsTopicArn
-import com.dwolla.aws.{autoscaling, ecs, sns}
-import io.chrisdavenport.log4cats._
-import fs2._
+import feral.lambda.events.SnsEvent
+import feral.lambda.{INothing, IOLambda, LambdaEnv}
+import fs2.Stream
+import org.http4s.ember.client.EmberClientBuilder
+import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.slf4j.Slf4jFactory
+import smithy4s.aws.http4s.*
+import smithy4s.aws.kernel.AwsRegion
+import software.amazon.awssdk.services.autoscaling.AutoScalingAsyncClient
+import software.amazon.awssdk.services.sns.SnsAsyncClient
 
-import scala.concurrent.ExecutionContext
-import scala.concurrent.ExecutionContext.global
-
-class TerminationEventHandler(ecsClientResource: Resource[IO, AmazonECSAsync],
-                              autoScalingClientResource: Resource[IO, AmazonAutoScalingAsync],
-                              snsClientResource: Resource[IO, AmazonSNSAsync],
-                              bridgeFunction: (EcsAlg[IO, Stream[IO, ?]], AutoScalingAlg[IO]) => (SnsTopicArn, LifecycleHookNotification) => IO[Unit],
-                             )(implicit contextShift: ContextShift[IO], timer: Timer[IO], L: Logger[IO]) extends LambdaStreamApp[IO] {
-  def this() = this(
-    ecs.resource,
-    autoscaling.resource,
-    sns.resource,
-    TerminationEventBridge.apply(_, _)(Monad[IO], com.dwolla.aws.lambda.fs2.logger[IO]),
-  )(IO.contextShift(global), IO.timer(global), com.dwolla.aws.lambda.fs2.logger[IO])
-
-  private def createResourcesAndProcess(stream: Stream[IO, Byte]): Stream[IO, Unit] =
+class TerminationEventHandler extends IOLambda[SnsEvent, INothing] {
+  override def handler: Resource[IO, LambdaEnv[IO, SnsEvent] => IO[Option[INothing]]] =
     for {
-      (topicArn, lifecycleHook) <- stream.through(ParseLifecycleHookNotification[IO])
-      ecsClient <- Stream.resource(ecsClientResource)
-      autoScalingClient <- Stream.resource(autoScalingClientResource)
-      snsClient <- Stream.resource(snsClientResource)
-      ecsInterpreter = EcsAlg[IO](ecsClient)
-      autoScalingInterpreter = AutoScalingAlg[IO](autoScalingClient, snsClient)
-      bridge = bridgeFunction(ecsInterpreter, autoScalingInterpreter)
-      _ <- Stream.eval(bridge(topicArn, lifecycleHook))
-    } yield ()
+      client <- EmberClientBuilder.default[IO].build
+      given LoggerFactory[IO] = Slf4jFactory.create[IO]
+      ecs <- ECS.simpleAwsClient(client, AwsRegion.US_WEST_2).map(EcsAlg(_))
+      autoscalingClient <- Resource.fromAutoCloseable(IO(AutoScalingAsyncClient.builder().build()))
+      snsClient <- Resource.fromAutoCloseable(IO(SnsAsyncClient.builder().build()))
+      autoscaling = AutoScalingAlg[IO](autoscalingClient, snsClient)
+      bridgeFunction = TerminationEventBridge(ecs, autoscaling)
+    } yield TerminationEventHandler[IO](bridgeFunction)
+}
 
-  override def run(context: Context,
-                   blockingExecutionContext: ExecutionContext)
-                  (stream: Stream[IO, Byte]): Stream[IO, Byte] =
-    createResourcesAndProcess(stream).drain
+object TerminationEventHandler {
+  def apply[F[_] : MonadThrow : LoggerFactory](terminationEventBridge: (SnsTopicArn, LifecycleHookNotification) => F[Unit])
+                                              (implicit C: fs2.Compiler[F, F]): LambdaEnv[F, SnsEvent] => F[Option[INothing]] = env =>
+    Stream.eval(env.event)
+      .map(_.records)
+      .flatMap(Stream.emits(_))
+      .map(_.sns)
+      .evalMap(ParseLifecycleHookNotification[F])
+      .unNone
+      .evalMap(terminationEventBridge.tupled)
+      .compile
+      .drain
+      .as(None)
 }

@@ -1,34 +1,27 @@
 package com.dwolla.autoscaling.ecs.draining
 
-import java.io.ByteArrayOutputStream
-
-import _root_.fs2.{Stream, Scope => _}
-import _root_.io.circe._
-import _root_.io.circe.literal._
-import _root_.io.circe.syntax._
-import cats.effect._
-import cats.effect.concurrent.Deferred
-import com.amazonaws.services.autoscaling.AmazonAutoScalingAsync
-import com.amazonaws.services.ecs.AmazonECSAsync
-import com.amazonaws.services.ecs.model.{Cluster => _, ContainerInstance => _, Resource => _}
-import com.amazonaws.services.lambda.runtime.Context
-import com.amazonaws.services.sns.AmazonSNSAsync
-import com.amazonaws.util.StringInputStream
-import com.dwolla.NoOpLogger
-import com.dwolla.aws.ArbitraryInstances._
+import _root_.io.circe.*
+import _root_.io.circe.literal.*
+import _root_.io.circe.syntax.*
+import cats.effect.*
+import cats.syntax.all.*
+import com.dwolla.aws.ArbitraryInstances
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
-import com.dwolla.aws.autoscaling.{AutoScalingAlg, AutoScalingAlgImpl}
-import com.dwolla.aws.ecs.{EcsAlg, EcsAlgImpl}
-import com.dwolla.aws.lambda.fs2.LambdaContext._
 import com.dwolla.aws.sns.model.SnsTopicArn
-import org.specs2.ScalaCheck
-import org.specs2.matcher.{IOImplicits, IOMatchers, Matchers}
-import org.specs2.mock.Mockito
-import org.specs2.mutable.Specification
+import feral.lambda.events.SnsEvent
+import feral.lambda.{Context, ContextInstances, LambdaEnv}
+import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
+import org.scalacheck.effect.PropF.forAllF
+import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.noop.NoOpFactory
 
-class TerminationEventHandlerSpec extends Specification with IOMatchers with IOImplicits with Matchers with ScalaCheck with Mockito {
-  implicit val logger = NoOpLogger[IO]
+class TerminationEventHandlerSpec
+  extends CatsEffectSuite
+    with ScalaCheckEffectSuite
+    with ArbitraryInstances
+    with ContextInstances {
 
+  private implicit val noopLoggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
   private def snsMessage[T: Encoder](topic: SnsTopicArn, detail: T, maybeSubject: Option[String]): Json =
     snsMessage(topic.asJson, detail.asJson, maybeSubject.asJson)
 
@@ -76,74 +69,49 @@ class TerminationEventHandlerSpec extends Specification with IOMatchers with IOI
              "Time": "2019-02-20T20:01:15.747Z"
            }"""
 
-  "TerminationEventHandler" should {
-    "handle a message" >> { prop { (arbSnsTopicArn: SnsTopicArn,
-                                    arbContext: Context,
-                                    arbLifecycleHookNotification: LifecycleHookNotification,
-                                    arbSubject: Option[String],
-                                   ) =>
-      val baos = new ByteArrayOutputStream()
-      val ecsClient: AmazonECSAsync = mock[AmazonECSAsync]
-      val autoScalingClient: AmazonAutoScalingAsync = mock[AmazonAutoScalingAsync]
-      val snsClient = mock[AmazonSNSAsync]
-
+  test("TerminationEventHandler should handle a message") {
+    forAllF { (arbSnsTopicArn: SnsTopicArn,
+               arbContext: Context[IO],
+               arbLifecycleHookNotification: LifecycleHookNotification,
+               arbSubject: Option[String],
+              ) =>
       for {
-        deferredEcsInterpreter <- Deferred[IO, EcsAlg[IO, Stream[IO, ?]]]
-        deferredAutoScalingInterpreter <- Deferred[IO, AutoScalingAlg[IO]]
         deferredLifecycleHookNotification <- Deferred[IO, LifecycleHookNotification]
         deferredSnsTopicArn <- Deferred[IO, SnsTopicArn]
 
-        eventHandler = new TerminationEventHandler(
-          Resource.pure(ecsClient),
-          Resource.pure(autoScalingClient),
-          Resource.pure(snsClient),
-          (ecs, asg) => (a, l) => for {
-            _ <- deferredSnsTopicArn.complete(a)
-            _ <- deferredLifecycleHookNotification.complete(l)
-            _ <- deferredEcsInterpreter.complete(ecs)
-            _ <- deferredAutoScalingInterpreter.complete(asg)
-          } yield ()
-        )
+        eventHandler = TerminationEventHandler { case (arn, notif) =>
+          deferredLifecycleHookNotification.complete(notif) >> 
+            deferredSnsTopicArn.complete(arn).void
+        }
 
-        _ <- IO(eventHandler.handleRequest(new StringInputStream(snsMessage(arbSnsTopicArn, arbLifecycleHookNotification, arbSubject).noSpaces), baos, arbContext))
+        snsEvent <- snsMessage(arbSnsTopicArn, arbLifecycleHookNotification, arbSubject).as[SnsEvent].liftTo[IO]
+        output <- eventHandler(LambdaEnv.pure(snsEvent, arbContext))
 
         actualLifecycleHookNotification <- deferredLifecycleHookNotification.get
-        actualEcsInterpreter <- deferredEcsInterpreter.get
-        actualAutoScalingInterpreter <- deferredAutoScalingInterpreter.get
         actualSnsTopicArn <- deferredSnsTopicArn.get
       } yield {
-        actualSnsTopicArn must be_==(arbSnsTopicArn)
-        actualLifecycleHookNotification must be_==(arbLifecycleHookNotification)
-        baos.toByteArray must beEmpty
-
-        actualEcsInterpreter must beAnInstanceOf[EcsAlgImpl[IO]]
-        actualAutoScalingInterpreter must beAnInstanceOf[AutoScalingAlgImpl[IO]]
+        assertEquals(actualSnsTopicArn, arbSnsTopicArn)
+        assertEquals(actualLifecycleHookNotification, arbLifecycleHookNotification)
+        assertEquals(output, None)
       }
-    }}
-
-    "handle a test notification message" >> { prop { (arbSnsTopicArn: SnsTopicArn,
-                                                      arbContext: Context,
-                                                      arbSubject: Option[String],
-                                                     ) =>
-      val baos = new ByteArrayOutputStream()
-      val ecsClient: AmazonECSAsync = mock[AmazonECSAsync]
-      val autoScalingClient: AmazonAutoScalingAsync = mock[AmazonAutoScalingAsync]
-      val snsClient = mock[AmazonSNSAsync]
-
-      val eventHandler = new TerminationEventHandler(
-        Resource.pure(ecsClient),
-        Resource.pure(autoScalingClient),
-        Resource.pure(snsClient),
-        (_, _) => (_, _) => IO.unit
-      )
-
-      for {
-        _ <- IO(eventHandler.handleRequest(new StringInputStream(snsMessage(arbSnsTopicArn, testNotification, arbSubject).noSpaces), baos, arbContext))
-      } yield {
-        baos.toByteArray must beEmpty
-      }
-    }}
-
+    }
   }
 
+  test("TerminationEventHandler should handle a test notification message") {
+    forAllF { (arbSnsTopicArn: SnsTopicArn,
+               arbContext: Context[IO],
+               arbSubject: Option[String],
+              ) =>
+      val eventHandler = TerminationEventHandler[IO] { case (arn, notif) =>
+        IO(fail(s"TerminationEventHandler should not be called for test messages, but was called with $arn and $notif"))
+      }
+
+      for {
+        snsEvent <- snsMessage(arbSnsTopicArn, testNotification, arbSubject).as[SnsEvent].liftTo[IO]
+        output <- eventHandler(LambdaEnv.pure(snsEvent, arbContext))
+      } yield {
+        assertEquals(output, None)
+      }
+    }
+  }
 }

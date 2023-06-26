@@ -1,56 +1,50 @@
-package com.dwolla.aws.ecs
+package com.dwolla.aws.ecs.model
 
-import shapeless.tag._
-import shapeless.tag
+import cats.Order
+import monix.newtypes.*
+import cats.syntax.all.*
+import com.dwolla.aws.AccountId
+import com.dwolla.aws.ec2.model.Ec2InstanceId
 
-package object model {
-  type ContainerInstanceId = String @@ ContainerInstanceIdTag
-  type ClusterArn = String @@ ClusterArnTag
-  type ClusterName = String @@ ClusterNameTag
-  type TaskCount = Int @@ TaskCountTag
+type ContainerInstanceId = ContainerInstanceId.Type
+object ContainerInstanceId extends NewtypeWrapped[String]
+type ClusterArn = ClusterArn.Type
+object ClusterArn extends NewtypeWrapped[String]
+type ClusterName = ClusterName.Type
+object ClusterName extends NewtypeWrapped[String]
+type TaskCount = TaskCount.Type
+object TaskCount extends NewtypeWrapped[Int] {
+  implicit val order: Order[TaskCount] = Order[Int].contramap(_.value)
+}
+type Region = Region.Type
+object Region extends NewtypeWrapped[String]
 
-  val tagContainerInstanceId: String => ContainerInstanceId = tag[ContainerInstanceIdTag][String]
-  val tagClusterArn: String => ClusterArn = tag[ClusterArnTag][String]
-  val tagClusterName: String => ClusterName = tag[ClusterNameTag][String]
-  val tagTaskCount: Int => TaskCount = tag[TaskCountTag][Int]
+case class Cluster(region: Region, accountId: AccountId, name: ClusterName) {
+  val clusterArn: ClusterArn = ClusterArn(s"arn:aws:ecs:$region:$accountId:cluster/$name")
 }
 
-package model {
+case class ContainerInstance(containerInstanceId: ContainerInstanceId,
+                             ec2InstanceId: Ec2InstanceId,
+                             runningTaskCount: TaskCount,
+                             status: ContainerStatus,
+                            )
 
-  import com.amazonaws.regions.Regions
-  import com.dwolla.aws.AccountId
-  import com.dwolla.aws.ec2.model.Ec2InstanceId
-
-  trait ContainerInstanceIdTag
-  trait ClusterNameTag
-  trait ClusterArnTag
-  trait TaskCountTag
-
-  case class Cluster(region: Regions, accountId: AccountId, name: ClusterName) {
-    val clusterArn: ClusterArn = tagClusterArn(s"arn:aws:ecs:${region.name()}:$accountId:cluster/$name")
+sealed trait ContainerStatus
+object ContainerStatus {
+  case object Active extends ContainerStatus {
+    override def toString: String = "ACTIVE"
   }
-  case class ContainerInstance(containerInstanceId: ContainerInstanceId,
-                               ec2InstanceId: Ec2InstanceId,
-                               runningTaskCount: TaskCount,
-                               status: ContainerStatus,
-                              )
+  case object Draining extends ContainerStatus {
+    override def toString: String = "DRAINING"
+  }
+  case object Inactive extends ContainerStatus {
+    override def toString: String = "INACTIVE"
+  }
 
-  sealed trait ContainerStatus
-  object ContainerStatus {
-    case object Active extends ContainerStatus {
-      override def toString: String = "ACTIVE"
-    }
-    case object Draining extends ContainerStatus {
-      override def toString: String = "DRAINING"
-    }
-    case object Inactive extends ContainerStatus {
-      override def toString: String = "INACTIVE"
-    }
-
-    def fromStatus(s: String): ContainerStatus = s match {
-      case "ACTIVE" => Active
-      case "INACTIVE" => Inactive
-      case "DRAINING" =>  Draining
-    }
+  def fromStatus(s: String): Option[ContainerStatus] = s match {
+    case "ACTIVE" => Active.some
+    case "INACTIVE" => Inactive.some
+    case "DRAINING" =>  Draining.some
+    case _ => None
   }
 }

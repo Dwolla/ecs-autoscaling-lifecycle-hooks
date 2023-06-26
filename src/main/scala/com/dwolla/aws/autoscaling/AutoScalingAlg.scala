@@ -1,18 +1,18 @@
 package com.dwolla.aws.autoscaling
 
-import cats.effect._
-import cats.implicits._
-import com.amazonaws.services.autoscaling.AmazonAutoScalingAsync
-import com.amazonaws.services.autoscaling.model.CompleteLifecycleActionRequest
-import com.amazonaws.services.sns.AmazonSNSAsync
-import com.amazonaws.services.sns.model.PublishRequest
+import cats.effect.*
+import cats.syntax.all.*
+import cats.effect.syntax.all.*
+import io.circe.syntax.*
+import software.amazon.awssdk.services.autoscaling.model.CompleteLifecycleActionRequest
+import software.amazon.awssdk.services.sns.model.PublishRequest
+
+import scala.concurrent.duration.*
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.sns.model.SnsTopicArn
-import com.dwolla.fs2aws._
-import io.circe.syntax._
-import io.chrisdavenport.log4cats._
-
-import scala.concurrent.duration._
+import org.typelevel.log4cats.{Logger, LoggerFactory}
+import software.amazon.awssdk.services.autoscaling.AutoScalingAsyncClient
+import software.amazon.awssdk.services.sns.SnsAsyncClient
 
 trait AutoScalingAlg[F[_]] {
   def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): F[Unit]
@@ -20,35 +20,43 @@ trait AutoScalingAlg[F[_]] {
 }
 
 object AutoScalingAlg {
-  def apply[F[_] : Effect : Timer : Logger](autoScalingClient: AmazonAutoScalingAsync,
-                                            snsClient: AmazonSNSAsync): AutoScalingAlg[F] =
-    new AutoScalingAlgImpl(autoScalingClient: AmazonAutoScalingAsync, snsClient: AmazonSNSAsync)
+  def apply[F[_] : Async : LoggerFactory](autoScalingClient: AutoScalingAsyncClient,
+                                          snsClient: SnsAsyncClient): AutoScalingAlg[F] =
+    new AutoScalingAlgImpl(autoScalingClient, snsClient)
 }
 
-class AutoScalingAlgImpl[F[_] : Async : Timer : Logger](autoScalingClient: AmazonAutoScalingAsync,
-                                                        snsClient: AmazonSNSAsync) extends AutoScalingAlg[F] {
+class AutoScalingAlgImpl[F[_] : Async : LoggerFactory](autoScalingClient: AutoScalingAsyncClient,
+                                                       snsClient: SnsAsyncClient) extends AutoScalingAlg[F] {
   override def pauseAndRecurse(t: SnsTopicArn, l: LifecycleHookNotification): F[Unit] = {
-    val req = new PublishRequest()
-      .withTopicArn(t)
-      .withMessage(l.asJson.noSpaces)
+    val req = PublishRequest.builder()
+      .topicArn(t.value)
+      .message(l.asJson.noSpaces)
+      .build()
 
     val sleepDuration = 5.seconds
 
-    for {
-      _ <- Logger[F].info(s"Sleeping for $sleepDuration, then restarting Lambda")
-      _ <- Timer[F].sleep(sleepDuration)
-      _ <- req.executeVia[F](snsClient.publishAsync).void
-    } yield ()
+    LoggerFactory[F].create.flatMap { implicit l =>
+      Logger[F].info(s"Sleeping for $sleepDuration, then restarting Lambda") >>
+        Async[F]
+          .fromCompletableFuture {
+            Sync[F]
+              .delay(snsClient.publish(req))
+              .delayBy(sleepDuration)
+          }
+          .void
+    }
   }
 
   override def continueAutoScaling(l: LifecycleHookNotification): F[Unit] = {
-    val req = new CompleteLifecycleActionRequest()
-      .withLifecycleHookName(l.lifecycleHookName)
-      .withAutoScalingGroupName(l.autoScalingGroupName)
-      .withLifecycleActionResult("CONTINUE")
-      .withInstanceId(l.EC2InstanceId)
+    val req = CompleteLifecycleActionRequest.builder()
+      .lifecycleHookName(l.lifecycleHookName)
+      .autoScalingGroupName(l.autoScalingGroupName)
+      .lifecycleActionResult("CONTINUE")
+      .instanceId(l.EC2InstanceId.value)
+      .build()
 
-    Logger[F].info(s"continuing auto scaling for ${l.autoScalingGroupName}") >> req.executeVia[F](autoScalingClient.completeLifecycleActionAsync).void
+    LoggerFactory[F].create.flatMap(_.info(s"continuing auto scaling for ${l.autoScalingGroupName}")) >>
+      Async[F].fromCompletableFuture(Sync[F].delay(autoScalingClient.completeLifecycleAction(req))).void
   }
 
 }

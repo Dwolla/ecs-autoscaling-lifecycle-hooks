@@ -1,10 +1,9 @@
 package com.dwolla.aws.ec2.model
 
-import org.scalacheck._
+import org.scalacheck.*
 
 object ArbitraryInstances extends ArbitraryInstances
 
 trait ArbitraryInstances {
-  val genHexChar: Gen[Char] = Gen.frequency((1, Gen.numChar), (1, Gen.choose(97.toChar, 102.toChar)))
-  implicit val arbEc2InstanceId: Arbitrary[Ec2InstanceId] = Arbitrary(Gen.listOfN(17, genHexChar).map(_.mkString("i-", "", "")).map(tagEc2InstanceId))
+  implicit val arbEc2InstanceId: Arbitrary[Ec2InstanceId] = Arbitrary(Gen.listOfN(17, Gen.hexChar).map(_.mkString("i-", "", "")).map(Ec2InstanceId(_)))
 }

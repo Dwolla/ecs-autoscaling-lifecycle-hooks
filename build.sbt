@@ -1,89 +1,59 @@
-javacOptions ++= Seq("-source", "1.8", "-target", "1.8", "-Xlint")
+// TODO using NoPublishPlugin probably isn't the best option here, maybe look for something better
 
-lazy val commonSettings = Seq(
-  organization := "Dwolla",
-  homepage := Option(url("https://github.com/Dwolla/autoscaling-ecs-draining-lambda")),
-)
+ThisBuild / organization := "Dwolla"
+ThisBuild / homepage := Option(url("https://github.com/Dwolla/autoscaling-ecs-draining-lambda"))
+ThisBuild / tlBaseVersion := "0.1"
+ThisBuild / scalaVersion := "3.3.0"
+ThisBuild / tlJdkRelease := Option(17)
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("17"))
 
-lazy val specs2Version = "4.4.1"
-lazy val awsSdkVersion = "1.11.490"
-
-lazy val root = (project in file("."))
+lazy val `smithy4s-generated` = project
+  .in(file("smithy4s"))
   .settings(
-    name := "autoscaling-ecs-draining-lambda",
-    resolvers ++= Seq(
-      Resolver.bintrayRepo("dwolla", "maven")
-    ),
     libraryDependencies ++= {
-      val circeVersion = "0.11.1"
-      val log4j2Version = "2.11.2"
       Seq(
-        "com.dwolla" %% "fs2-aws" % "2.0.0-M3",
-        "com.amazonaws" % "aws-java-sdk-ecs" % awsSdkVersion,
-        "com.amazonaws" % "aws-java-sdk-autoscaling" % awsSdkVersion,
-        "com.amazonaws" % "aws-java-sdk-sns" % awsSdkVersion,
-        "com.amazonaws" % "aws-lambda-java-core" % "1.1.0",
-        "com.amazonaws" % "aws-lambda-java-log4j2" % "1.0.0",
-        "com.amazonaws" % "aws-lambda-java-events" % "2.2.5",
-        "org.apache.logging.log4j" % "log4j-api" % log4j2Version,
-        "org.apache.logging.log4j" % "log4j-core" % log4j2Version,
-        "org.apache.logging.log4j" % "log4j-slf4j-impl" % log4j2Version,
-        "io.circe" %% "circe-fs2" % "0.11.0",
-        "io.circe" %% "circe-optics" % "0.11.0",
-        "io.circe" %% "circe-generic-extras" % circeVersion,
-        "io.chrisdavenport" %% "log4cats-slf4j" % "0.3.0",
-      ) ++ Seq(
-        "org.specs2" %% "specs2-core" % specs2Version,
-        "org.specs2" %% "specs2-mock" % specs2Version,
-        "org.specs2" %% "specs2-matcher-extra" % specs2Version,
-        "org.specs2" %% "specs2-cats" % specs2Version,
-        "org.specs2" %% "specs2-scalacheck" % specs2Version,
-        "com.dwolla" %% "scala-aws-utils-testkit" % "1.6.1",
-        "org.scalacheck" %% "scalacheck" % "1.14.0",
-        "com.github.alexarchambault" %% "scalacheck-shapeless_1.14" % "1.2.0",
-        "io.chrisdavenport" %% "cats-scalacheck" % "0.1.0",
-        "io.circe" %% "circe-literal" % circeVersion,
-        "com.47deg" %% "scalacheck-toolbox-datetime" % "0.2.5",
-        "org.typelevel" %% "cats-effect-laws" % "1.2.0",
-      ).map(_ % Test)
-    },
-  )
-  .settings(commonSettings: _*)
-  .configs(IntegrationTest)
-  .settings(Defaults.itSettings: _*)
-  .enablePlugins(PublishToS3)
-
-lazy val stack: Project = (project in file("stack"))
-  .settings(commonSettings: _*)
-  .settings(
-    resolvers ++= Seq(Resolver.jcenterRepo),
-    libraryDependencies ++= {
-      val awscdkVersion = "0.24.1"
-      Seq(
-        "software.amazon.awscdk" % "ecs" % awscdkVersion,
-        "software.amazon.awscdk" % "sns" % awscdkVersion,
-        "software.amazon.awscdk" % "lambda" % awscdkVersion,
-        "software.amazon.awscdk" % "autoscaling" % awscdkVersion,
-        "org.typelevel" %% "cats-effect" % "1.2.0",
-        "io.circe" %% "circe-optics" % "0.11.0",
-        "co.fs2" %% "fs2-io" % "1.0.3",
+        "com.disneystreaming.smithy4s" %% "smithy4s-http4s" % smithy4sVersion.value,
+        "com.disneystreaming.smithy4s" %% "smithy4s-aws-http4s" % smithy4sVersion.value,
+        "com.disneystreaming.smithy" % "aws-ecs-spec" % "2023.02.10",
       )
     },
-    stackName := (name in root).value,
-    stackParameters := List(
-      "S3Bucket" → (s3Bucket in root).value,
-      "S3Key" → (s3Key in root).value
-    ),
-    awsAccountId := sys.props.get("AWS_ACCOUNT_ID"),
-    awsRoleName := Option("cloudformation/deployer/cloudformation-deployer"),
+    scalacOptions ~= (_.filterNot(s => s.startsWith("-Ywarn") || s.startsWith("-Xlint") || s.startsWith("-W") || s.equals("-Xfatal-warnings"))),
   )
-  .enablePlugins(CloudFormationStack)
-  .dependsOn(root)
+  .enablePlugins(
+    NoPublishPlugin,
+    Smithy4sCodegenPlugin,
+  )
 
-assemblyMergeStrategy in assembly := {
-  case PathList(ps @ _*) if ps.last == "Log4j2Plugins.dat" => sbtassembly.Log4j2MergeStrategy.plugincache
-  case PathList("META-INF", "MANIFEST.MF") => MergeStrategy.discard
-  case PathList("log4j2.xml") => MergeStrategy.singleOrError
-  case _ ⇒ MergeStrategy.first
-}
-test in assembly := {}
+lazy val `autoscaling-ecs-draining-lambda` = project
+  .in(file("."))
+  .settings(
+    libraryDependencies ++= {
+      Seq(
+        "com.dwolla" %% "fs2-utils" % "3.0.0-RC2",
+        "org.typelevel" %% "feral-lambda" % "0.2.3",
+        "org.typelevel" %% "log4cats-core" % "2.6.0",
+        "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
+        "org.http4s" %% "http4s-ember-client" % "0.23.21",
+        "software.amazon.awssdk" % "autoscaling" % "2.20.69",
+        "software.amazon.awssdk" % "sns" % "2.20.69",
+        "io.circe" %% "circe-parser" % "0.14.5",
+        "io.monix" %% "newtypes-core" % "0.2.3",
+        "io.monix" %% "newtypes-circe-v0-14" % "0.2.3",
+        "org.typelevel" %% "cats-effect-testkit" % "3.5.1" % Test,
+        "org.typelevel" %% "munit-cats-effect" % "2.0.0-M3" % Test,
+        "org.scalameta" %% "munit-scalacheck" % "1.0.0-M8" % Test,
+        "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
+        "org.typelevel" %% "log4cats-noop" % "2.6.0" % Test,
+        "io.circe" %% "circe-literal" % "0.14.5" % Test,
+        "io.circe" %% "circe-testing" % "0.14.5" % Test,
+        "com.47deg" %% "scalacheck-toolbox-datetime" % "0.7.0" % Test exclude("joda-time", "joda-time"),
+        "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
+      )
+    }
+  )
+  .dependsOn(`smithy4s-generated`)
+  .enablePlugins(
+    NoPublishPlugin,
+    UniversalPlugin,
+    JavaAppPackaging,
+  )

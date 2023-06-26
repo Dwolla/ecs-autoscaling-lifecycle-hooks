@@ -1,11 +1,7 @@
-logLevel := Level.Warn
-addSbtPlugin("com.dwolla.sbt" %% "sbt-s3-publisher" % "1.2.0")
-addSbtPlugin("com.dwolla.sbt" %% "sbt-cloudformation-stack" % "1.2.2")
-addSbtPlugin("com.dwolla.sbt" %% "sbt-dwolla-base" % "1.3.0")
-addSbtPlugin("com.dwolla" % "sbt-assembly-log4j2" % "1.0.0-0e5d5dd98c4c1e12ff7134536456679069c13e4d")
-addSbtPlugin("com.dwijnand" % "sbt-travisci" % "1.1.1")
+addSbtPlugin("org.typelevel" % "sbt-typelevel-no-publish" % "0.5.0-RC4")
+addSbtPlugin("org.typelevel" % "sbt-typelevel-ci-release" % "0.5.0-RC4")
+addSbtPlugin("org.typelevel" % "sbt-typelevel-settings" % "0.5.0-RC4")
+addSbtPlugin("com.github.sbt" % "sbt-native-packager" % "1.9.16")
+addSbtPlugin("com.disneystreaming.smithy4s" % "smithy4s-sbt-codegen" % "0.17.10")
 
-resolvers ++= Seq(
-  Resolver.bintrayIvyRepo("dwolla", "sbt-plugins"),
-  Resolver.bintrayRepo("dwolla", "maven")
-)
+ThisBuild / libraryDependencySchemes += "org.scala-lang.modules" %% "scala-xml" % VersionScheme.Always

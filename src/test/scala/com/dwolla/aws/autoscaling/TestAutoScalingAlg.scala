@@ -1,6 +1,6 @@
 package com.dwolla.aws.autoscaling
 
-import cats.effect._
+import cats.effect.*
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.sns.model.SnsTopicArn
 

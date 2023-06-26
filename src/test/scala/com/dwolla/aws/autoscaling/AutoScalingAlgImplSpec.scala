@@ -1,100 +1,116 @@
 package com.dwolla.aws.autoscaling
 
-import java.util.concurrent.Future
-
-import cats.effect._
-import cats.effect.concurrent.{Deferred, MVar}
-import com.amazonaws.handlers.AsyncHandler
-import com.amazonaws.services.autoscaling.AmazonAutoScalingAsync
-import com.amazonaws.services.autoscaling.model._
-import com.amazonaws.services.sns.AmazonSNSAsync
-import com.amazonaws.services.sns.model.{PublishRequest, PublishResult}
-import com.dwolla.NoOpLogger
-import com.dwolla.aws.ArbitraryInstances._
+import cats.effect.*
+import cats.effect.std.Dispatcher
+import cats.effect.testkit.TestControl
+import com.dwolla.aws.ArbitraryInstances
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
-import com.dwolla.aws.sns.FakeSNSAsync
 import com.dwolla.aws.sns.model.SnsTopicArn
-import io.circe.syntax._
-import org.specs2.ScalaCheck
-import org.specs2.matcher.{IOImplicits, IOMatchers}
-import org.specs2.mutable.Specification
+import io.circe.syntax.*
+import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
+import org.scalacheck.effect.PropF.forAllF
+import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.noop.NoOpFactory
+import software.amazon.awssdk.services.autoscaling.AutoScalingAsyncClient
+import software.amazon.awssdk.services.autoscaling.model.{CompleteLifecycleActionRequest, CompleteLifecycleActionResponse}
+import software.amazon.awssdk.services.sns.SnsAsyncClient
+import software.amazon.awssdk.services.sns.model.{PublishRequest, PublishResponse}
 
-import scala.concurrent.duration._
+import java.util.concurrent.CompletableFuture
+import scala.concurrent.duration.*
 
-class AutoScalingAlgImplSpec extends Specification with ScalaCheck with IOMatchers with IOImplicits {
+class AutoScalingAlgImplSpec
+  extends CatsEffectSuite
+  with ScalaCheckEffectSuite
+  with ArbitraryInstances {
 
-  implicit val logger = NoOpLogger[IO]
+  private implicit val loggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
 
-  "AutoScalingAlgImpl" should {
+  test("AutoScalingAlgImpl should make an async completeLifecycleAction request to continueAutoScaling") {
+    forAllF { (arbLifecycleHookNotification: LifecycleHookNotification) =>
+      Dispatcher.sequential[IO].use { dispatcher =>
+        for {
+          deferredCompleteLifecycleActionRequest <- Deferred[IO, CompleteLifecycleActionRequest]
+          autoScalingClient = new AutoScalingAsyncClient {
+            override def serviceName(): String = "FakeAutoScalingAsyncClient"
+            override def close(): Unit = ()
 
-    "make an async completeLifecycleAction request to continueAutoScaling" >> prop { arbLifecycleHookNotification: LifecycleHookNotification =>
-
-      for {
-        deferredCompleteLifecycleActionRequest <- Deferred[IO, CompleteLifecycleActionRequest]
-        autoScalingClient <- IO.asyncF[AmazonAutoScalingAsync] { completeMock =>
-          IO.async[CompleteLifecycleActionRequest] { completeRequest =>
-            completeMock(Right(new FakeAutoScalingAsync {
-              override def completeLifecycleActionAsync(req: CompleteLifecycleActionRequest,
-                                                        asyncHandler: AsyncHandler[CompleteLifecycleActionRequest, CompleteLifecycleActionResult]): Future[CompleteLifecycleActionResult] = {
-                completeRequest(Right(req))
-                asyncHandler.onSuccess(req, null)
-                null
+            override def completeLifecycleAction(completeLifecycleActionRequest: CompleteLifecycleActionRequest): CompletableFuture[CompleteLifecycleActionResponse] =
+              dispatcher.unsafeToCompletableFuture {
+                deferredCompleteLifecycleActionRequest.complete(completeLifecycleActionRequest)
+                  .as(CompleteLifecycleActionResponse.builder().build())
               }
-            }))
-          }.flatMap(deferredCompleteLifecycleActionRequest.complete)
-        }
+          }
 
-        _ <- new AutoScalingAlgImpl[IO](autoScalingClient, null).continueAutoScaling(arbLifecycleHookNotification)
+          snsClient = new SnsAsyncClient {
+            override def serviceName(): String = "FakeSnsAsyncClient"
+            override def close(): Unit = ()
 
-        passedReq <- deferredCompleteLifecycleActionRequest.get
-      } yield {
-        passedReq must beLike {
-          case req: CompleteLifecycleActionRequest =>
-            req.getLifecycleHookName must be_==(arbLifecycleHookNotification.lifecycleHookName)
-            req.getAutoScalingGroupName must be_==(arbLifecycleHookNotification.autoScalingGroupName)
-            req.getLifecycleActionResult must be_==("CONTINUE")
-            req.getInstanceId must be_==(arbLifecycleHookNotification.EC2InstanceId)
+            override def publish(publishRequest: PublishRequest): CompletableFuture[PublishResponse] =
+              CompletableFuture.failedFuture(new RuntimeException("SnsAsyncClient.publish should not have been called"))
+          }
+
+          _ <- new AutoScalingAlgImpl[IO](autoScalingClient, snsClient).continueAutoScaling(arbLifecycleHookNotification)
+
+          passedReq <- deferredCompleteLifecycleActionRequest.get
+        } yield {
+          assertEquals(passedReq.lifecycleHookName(), arbLifecycleHookNotification.lifecycleHookName)
+          assertEquals(passedReq.autoScalingGroupName(), arbLifecycleHookNotification.autoScalingGroupName)
+          assertEquals(passedReq.lifecycleActionResult(), "CONTINUE")
+          assertEquals(passedReq.instanceId(), arbLifecycleHookNotification.EC2InstanceId.value)
         }
       }
     }
+  }
 
-    "pause 5 seconds and then send a message to restart the lambda" >> prop { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification) =>
-      val context = cats.effect.laws.util.TestContext()
-
+  test("AutoScalingAlgImpl should pause 5 seconds and then send a message to restart the lambda") {
+    forAllF { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification) =>
       for {
-        mvarPublishRequest <- MVar.empty[IO, PublishRequest]
-        snsClient <- IO.asyncF[AmazonSNSAsync] { completeMock =>
-          IO.async[PublishRequest] { completeRequest =>
-            completeMock(Right(new FakeSNSAsync {
-              override def publishAsync(req: PublishRequest,
-                                        asyncHandler: AsyncHandler[PublishRequest, PublishResult]): Future[PublishResult] = {
-                completeRequest(Right(req))
-                asyncHandler.onSuccess(req, new PublishResult())
-                null
+        capturedPublishRequest <- Deferred[IO, PublishRequest]
+        control <- TestControl.execute {
+          Dispatcher.sequential[IO](await = true).use { dispatcher =>
+            val autoScalingClient = new AutoScalingAsyncClient {
+              override def serviceName(): String = "FakeAutoScalingAsyncClient"
+              override def close(): Unit = ()
+
+              override def completeLifecycleAction(completeLifecycleActionRequest: CompleteLifecycleActionRequest): CompletableFuture[CompleteLifecycleActionResponse] = {
+                CompletableFuture.failedFuture(new RuntimeException("AutoScalingAsyncClient.completeLifecycleAction should not have been called"))
               }
-            }))
-          }.flatMap(mvarPublishRequest.put)
+            }
+
+            val snsClient = new SnsAsyncClient {
+              override def serviceName(): String = "FakeSnsAsyncClient"
+              override def close(): Unit = ()
+
+              override def publish(publishRequest: PublishRequest): CompletableFuture[PublishResponse] =
+                dispatcher.unsafeToCompletableFuture {
+                  capturedPublishRequest
+                    .complete(publishRequest)
+                    .as(PublishResponse.builder().build())
+                }
+            }
+
+            AutoScalingAlg[IO](autoScalingClient, snsClient)
+              .pauseAndRecurse(arbSnsTopicArn, arbLifecycleHookNotification)
+          }
         }
+        _ <- control.tick
+        _ <- control.tickFor(4.seconds)
 
-        cut = new AutoScalingAlgImpl[IO](null, snsClient)(Async[IO], context.timer[IO], NoOpLogger[IO])
-        fiber <- cut.pauseAndRecurse(arbSnsTopicArn, arbLifecycleHookNotification).attempt.start(context.contextShift[IO])
+        firstIsEmpty <- capturedPublishRequest.tryGet //.map(_.isEmpty)
 
-        _ <- IO(context.tick(4.seconds))
+        _ <- control.tickAll
+        _ <- control.tickAll
 
-        firstIsEmpty <- mvarPublishRequest.isEmpty
+        _ <- control.advanceAndTick(1.minute)
 
-        _ <- IO(context.tick(1.seconds))
-
-        success <- fiber.join
-        publishedRequest <- mvarPublishRequest.read
+        publishedRequest <- capturedPublishRequest.get.timeout(2.seconds)
+        result <- control.results
       } yield {
-        firstIsEmpty must beTrue
-        success must beRight(())
-        publishedRequest must beLikeA[PublishRequest] {
-          case req =>
-            req.getTopicArn must be_==(arbSnsTopicArn)
-            req.getMessage must be_==(arbLifecycleHookNotification.asJson.noSpaces)
-        }
+        assert(firstIsEmpty.isEmpty)
+        assertEquals(publishedRequest.topicArn(), arbSnsTopicArn.value)
+        assertEquals(publishedRequest.message(), arbLifecycleHookNotification.asJson.noSpaces)
+        assert(result.isDefined)
       }
     }
   }
