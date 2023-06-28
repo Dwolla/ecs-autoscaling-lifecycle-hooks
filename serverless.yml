@@ -1,0 +1,111 @@
+service: ecs-autoscaling-lifecycle-hooks
+useDotenv: true
+frameworkVersion: ^3.33.0
+
+provider:
+  name: aws
+  runtime: java17
+  memorySize: 1024
+  timeout: 60
+  region: us-west-2
+  deploymentBucket:
+    name: ${env:BUCKET}
+    serverSideEncryption: "AES256"
+  iam:
+    deploymentRole: "arn:aws:iam::${env:ACCOUNT}:role/cloudformation/deployer/cloudformation-deployer"
+    role:
+      managedPolicies:
+        - "arn:aws:iam::aws:policy/service-role/AutoScalingNotificationAccessRole"
+      statements:
+        - Sid: CorePermissions
+          Action:
+            - "autoscaling:CompleteLifecycleAction"
+            - "ecs:ListClusters"
+            - "ecs:ListContainerInstances"
+            - "ecs:DescribeContainerInstances"
+            - "ecs:UpdateContainerInstancesState"
+          Resource: "*"
+          Effect: Allow
+        - Sid: RepublishMessages
+          Effect: Allow
+          Resource:
+            - Ref: SNSTopicAutoScalingEcsDrainingNotification
+          Action:
+            - sqs:SendMessage
+            - sqs:GetQueueUrl
+            - sns:Publish
+  tracing:
+    lambda: true
+  logRetentionInDays: 7
+  stackTags:
+    Creator: serverless
+    Environment: ${self:custom.EnvironmentTag.${opt:stage}}
+    Project: ${self:service}
+    Team: platform
+    Visibility: internal
+    "org.label-schema.vcs-ref": ${env:VERSION}
+    "org.label-schema.vcs-url": ${env:VCS_URL}
+
+package:
+  individually: true
+
+functions:
+  TerminationHook:
+    handler: com.dwolla.autoscaling.ecs.draining.TerminationEventHandler
+    package:
+      artifact: ${env:ARTIFACT_PATH}
+    events:
+      - sns:
+          displayName: AutoScalingEcsDrainingNotification
+          topicName: AutoScalingEcsDrainingNotification
+
+resources:
+  Description:
+    Auto Scaling Lifecycle Hook that ensures an ECS Container Instance is fully drained before it is terminated by Auto Scaling
+  Resources:
+    AllowPublishToTerminationEventHandler:
+      Type: AWS::IAM::Role
+      Properties:
+        AssumeRolePolicyDocument:
+          Version: "2012-10-17"
+          Statement:
+            - Effect: Allow
+              Principal:
+                Service: autoscaling.amazonaws.com
+              Action:
+                - sts:AssumeRole
+        Policies:
+          - PolicyName: AllowPublishToTerminationEventHandler
+            PolicyDocument:
+              Version: "2012-10-17"
+              Statement:
+                - Effect: Allow
+                  Resource:
+                    - Ref: SNSTopicAutoScalingEcsDrainingNotification
+                  Action:
+                    - sqs:SendMessage
+                    - sqs:GetQueueUrl
+                    - sns:Publish
+
+  Outputs:
+    SNSTopicForASG:
+      Value:
+        Ref: SNSTopicAutoScalingEcsDrainingNotification
+      Description:
+        Topic used by Auto Scaling to send notifications when instance state is changing
+      Export:
+        Name: SnsTopicForAutoScalingTerminationHookNotificationsToDrainEcsInstances
+    SnsLambdaRoleArn:
+      Value:
+        Fn::GetAtt:
+          - AllowPublishToTerminationEventHandler
+          - Arn
+      Export:
+        Name: IamRoleForAutoScalingTerminationHookNotificationsToDrainEcsInstances
+      Description:
+        IAM Role to allow Auto Scaling to publish to the SNS Topic for termination lifecycle hooks on ECS instances
+
+custom:
+  EnvironmentTag:
+    admin: admin
+    sandbox: sandbox

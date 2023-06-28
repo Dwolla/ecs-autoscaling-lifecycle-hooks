@@ -1,5 +1,4 @@
-addSbtPlugin("org.typelevel" % "sbt-typelevel-no-publish" % "0.5.0-RC4")
-addSbtPlugin("org.typelevel" % "sbt-typelevel-ci-release" % "0.5.0-RC4")
+addSbtPlugin("org.typelevel" % "sbt-typelevel-ci" % "0.5.0-RC4")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-settings" % "0.5.0-RC4")
 addSbtPlugin("org.typelevel" % "sbt-typelevel-mergify" % "0.5.0-RC4")
 addSbtPlugin("com.github.sbt" % "sbt-native-packager" % "1.9.16")

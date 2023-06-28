@@ -1,8 +1,6 @@
-// TODO using NoPublishPlugin probably isn't the best option here, maybe look for something better
-
 ThisBuild / organization := "Dwolla"
 ThisBuild / homepage := Option(url("https://github.com/Dwolla/autoscaling-ecs-draining-lambda"))
-ThisBuild / tlBaseVersion := "0.1"
+ThisBuild / tlCiDependencyGraphJob := false
 ThisBuild / scalaVersion := "3.3.0"
 ThisBuild / tlJdkRelease := Option(17)
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("17"))
@@ -11,6 +9,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
   author = "dwolla-oss-scala-steward[bot]",
   mergeMinors = true,
 ))}
+topLevelDirectory := None
 
 lazy val `smithy4s-generated` = project
   .in(file("smithy4s"))
@@ -25,7 +24,6 @@ lazy val `smithy4s-generated` = project
     scalacOptions ~= (_.filterNot(s => s.startsWith("-Ywarn") || s.startsWith("-Xlint") || s.startsWith("-W") || s.equals("-Xfatal-warnings"))),
   )
   .enablePlugins(
-    NoPublishPlugin,
     Smithy4sCodegenPlugin,
   )
 
@@ -54,11 +52,13 @@ lazy val `autoscaling-ecs-draining-lambda` = project
         "com.47deg" %% "scalacheck-toolbox-datetime" % "0.7.0" % Test exclude("joda-time", "joda-time"),
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
       )
-    }
+    },
+    topLevelDirectory := None,
   )
   .dependsOn(`smithy4s-generated`)
   .enablePlugins(
-    NoPublishPlugin,
     UniversalPlugin,
     JavaAppPackaging,
+    ServerlessDeployPlugin,
+    GitVersioning,
   )
