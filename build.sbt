@@ -6,6 +6,11 @@ ThisBuild / tlBaseVersion := "0.1"
 ThisBuild / scalaVersion := "3.3.0"
 ThisBuild / tlJdkRelease := Option(17)
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("17"))
+ThisBuild / mergifyRequiredJobs ++= Seq("validate-steward")
+ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
+  author = "dwolla-oss-scala-steward[bot]",
+  mergeMinors = true,
+))}
 
 lazy val `smithy4s-generated` = project
   .in(file("smithy4s"))
