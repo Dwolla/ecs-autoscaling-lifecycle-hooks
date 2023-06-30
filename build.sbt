@@ -42,6 +42,8 @@ lazy val `autoscaling-ecs-draining-lambda` = project
         "io.circe" %% "circe-parser" % "0.14.5",
         "io.monix" %% "newtypes-core" % "0.2.3",
         "io.monix" %% "newtypes-circe-v0-14" % "0.2.3",
+        "com.amazonaws" % "aws-lambda-java-log4j2" % "1.5.1" % Runtime,
+        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.20.0" % Runtime,
         "org.typelevel" %% "cats-effect-testkit" % "3.5.1" % Test,
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M3" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M8" % Test,
