@@ -1,6 +1,6 @@
 # Auto Scaling ECS Instance Draining Lambda
 
-[![Travis](https://img.shields.io/travis/Dwolla/autoscaling-ecs-draining-lambda.svg?style=flat-square)](https://travis-ci.org/Dwolla/autoscaling-ecs-draining-lambda)
+![CI](https://github.com/Dwolla/autoscaling-ecs-draining-lambda/actions/workflows/ci.yml/badge.svg)
 ![license](https://img.shields.io/github/license/Dwolla/autoscaling-ecs-draining-lambda.svg?style=flat-square)
 
 AWS Lambda function to use [Auto Scaling Lifecycle Hooks](https://docs.aws.amazon.com/autoscaling/ec2/userguide/lifecycle-hooks.html) to drain ECS instances when an Auto Scaling Group scales in.
@@ -9,10 +9,8 @@ Inspired by [“How to Automate Container Instance Draining in Amazon ECS”](ht
 
 ## Deploy
 
-To deploy the stack, ensure the required IAM roles exist (`DataEncrypter` and `cloudformation/deployer/cloudformation-deployer`), then deploy with `sbt`:
+To deploy the stack, ensure the required IAM role exists (`cloudformation/deployer/cloudformation-deployer`), then deploy with `sbt`:
 
 ```ShellSession
-sbt -DAWS_ACCOUNT_ID={your-account-id} publish stack/deploy
+sbt "deploy Admin"
 ```
-
-The `publish` task comes from [Dwolla’s S3 sbt plugin](https://github.com/Dwolla/sbt-s3-publisher), and the stack/deploy task comes from [Dwolla’s CloudFormation sbt plugin](https://github.com/Dwolla/sbt-cloudformation-stack).
