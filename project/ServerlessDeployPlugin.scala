@@ -26,7 +26,7 @@ object ServerlessDeployPlugin extends AutoPlugin {
       val exitCode = Process(
         baseCommand ++ Seq("--stage", Stage.parser.parsed.name),
         Option((ThisBuild / baseDirectory).value),
-        "ARTIFACT_PATH" -> (Universal / packageBin).value.toString,
+        "DRAINING_ARTIFACT_PATH" -> (LocalProject("autoscaling-ecs-draining-lambda") / Universal / packageBin).value.toString,
         "VERSION" -> version.value,
         "VCS_URL" -> (ThisBuild / homepage).value.get.toString,
       ).!

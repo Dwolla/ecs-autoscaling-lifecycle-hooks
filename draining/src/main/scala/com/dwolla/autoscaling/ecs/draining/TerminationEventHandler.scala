@@ -8,6 +8,7 @@ import com.dwolla.aws.autoscaling.AutoScalingAlg
 import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
 import com.dwolla.aws.ecs.EcsAlg
 import com.dwolla.aws.sns.model.SnsTopicArn
+import com.dwolla.aws.sns.ParseLifecycleHookNotification
 import feral.lambda.events.SnsEvent
 import feral.lambda.{INothing, IOLambda, LambdaEnv}
 import fs2.Stream

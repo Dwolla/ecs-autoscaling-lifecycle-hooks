@@ -15,6 +15,46 @@ pull_request_rules:
   - status-success=Build and Test (ubuntu-latest, 3, corretto@17)
   actions:
     merge: {}
+- name: Label aws-testkit PRs
+  conditions:
+  - files~=^aws-testkit/
+  actions:
+    label:
+      add:
+      - aws-testkit
+      remove: []
+- name: Label core PRs
+  conditions:
+  - files~=^core/
+  actions:
+    label:
+      add:
+      - core
+      remove: []
+- name: Label core-tests PRs
+  conditions:
+  - files~=^core-tests/
+  actions:
+    label:
+      add:
+      - core-tests
+      remove: []
+- name: Label draining PRs
+  conditions:
+  - files~=^draining/
+  actions:
+    label:
+      add:
+      - draining
+      remove: []
+- name: Label feral-testkit PRs
+  conditions:
+  - files~=^feral-testkit/
+  actions:
+    label:
+      add:
+      - feral-testkit
+      remove: []
 - name: Label smithy4s PRs
   conditions:
   - files~=^smithy4s/

@@ -55,3 +55,6 @@ jobs:
 
       - name: Test
         run: sbt '++ ${{ matrix.scala }}' test
+
+      - name: Package
+        run: sbt '++ ${{ matrix.scala }}' autoscaling-ecs-draining-lambda/Universal/packageBin

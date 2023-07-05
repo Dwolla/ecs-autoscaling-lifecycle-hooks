@@ -1,4 +1,4 @@
-package com.dwolla.autoscaling.ecs.draining
+package com.dwolla.aws.sns
 
 import cats.*
 import cats.syntax.all.*

@@ -53,7 +53,7 @@ functions:
   TerminationHook:
     handler: com.dwolla.autoscaling.ecs.draining.TerminationEventHandler
     package:
-      artifact: ${env:ARTIFACT_PATH}
+      artifact: ${env:DRAINING_ARTIFACT_PATH}
     events:
       - sns:
           arn:
