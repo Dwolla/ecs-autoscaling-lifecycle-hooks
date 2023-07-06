@@ -56,14 +56,19 @@ functions:
       artifact: ${env:ARTIFACT_PATH}
     events:
       - sns:
-          displayName: AutoScalingEcsDrainingNotification
+          arn:
+            Ref: SNSTopicAutoScalingEcsDrainingNotification
           topicName: AutoScalingEcsDrainingNotification
 
 resources:
   Description:
     Auto Scaling Lifecycle Hook that ensures an ECS Container Instance is fully drained before it is terminated by Auto Scaling
   Resources:
-    AllowPublishToTerminationEventHandler:
+    SNSTopicAutoScalingEcsDrainingNotification:
+      Type: AWS::SNS::Topic
+      Properties:
+        TopicName: AutoScalingEcsDrainingNotification
+    AllowPublishToSNSTopicAutoScalingEcsDrainingNotification:
       Type: AWS::IAM::Role
       Properties:
         AssumeRolePolicyDocument:
@@ -75,7 +80,7 @@ resources:
               Action:
                 - sts:AssumeRole
         Policies:
-          - PolicyName: AllowPublishToTerminationEventHandler
+          - PolicyName: AllowPublishToSNSTopicAutoScalingEcsDrainingNotification
             PolicyDocument:
               Version: "2012-10-17"
               Statement:
@@ -88,20 +93,20 @@ resources:
                     - sns:Publish
 
   Outputs:
-    SNSTopicForASG:
+    SNSTopicAutoScalingEcsDrainingNotification:
       Value:
         Ref: SNSTopicAutoScalingEcsDrainingNotification
       Description:
         Topic used by Auto Scaling to send notifications when instance state is changing
       Export:
-        Name: SnsTopicForAutoScalingTerminationHookNotificationsToDrainEcsInstances
-    SnsLambdaRoleArn:
+        Name: sls-${self:service}-${opt:stage}-SNSTopicAutoScalingEcsDrainingNotification
+    AllowPublishToSNSTopicAutoScalingEcsDrainingNotification:
       Value:
         Fn::GetAtt:
-          - AllowPublishToTerminationEventHandler
+          - AllowPublishToSNSTopicAutoScalingEcsDrainingNotification
           - Arn
       Export:
-        Name: IamRoleForAutoScalingTerminationHookNotificationsToDrainEcsInstances
+        Name: sls-${self:service}-${opt:stage}-AllowPublishToSNSTopicAutoScalingEcsDrainingNotification
       Description:
         IAM Role to allow Auto Scaling to publish to the SNS Topic for termination lifecycle hooks on ECS instances
 
