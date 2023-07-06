@@ -20,6 +20,6 @@ stages:
       - target/universal/**
       - deploy.sh
   deployProd:
-    nodeLabel: nvm-deployer
+    nodeLabel: nvm-sbt-deployer
     steps:
       - ./deploy.sh
