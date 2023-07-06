@@ -5,6 +5,7 @@ frameworkVersion: ^3.33.0
 provider:
   name: aws
   runtime: java17
+  architecture: arm64
   memorySize: 1024
   timeout: 60
   region: us-west-2
