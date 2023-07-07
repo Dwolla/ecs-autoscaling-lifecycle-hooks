@@ -13,12 +13,7 @@ stages:
         sbt doc
         sbt autoscaling-ecs-draining-lambda/Universal/packageBin
     filesToStash:
-      - serverless.yml
-      - .nvmrc
-      - .sdkmanrc
-      - .env
-      - target/universal/**
-      - deploy.sh
+      - '**'
   deployProd:
     nodeLabel: nvm-sbt-deployer
     steps:
