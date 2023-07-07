@@ -1,4 +1,4 @@
-package com.dwolla.autoscaling.ecs.draining
+package com.dwolla.aws.autoscaling
 
 import _root_.io.circe.*
 import _root_.io.circe.literal.*
@@ -15,7 +15,7 @@ import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
 
-class TerminationEventHandlerSpec
+class LifecycleHookHandlerSpec
   extends CatsEffectSuite
     with ScalaCheckEffectSuite
     with ArbitraryInstances
@@ -23,9 +23,6 @@ class TerminationEventHandlerSpec
 
   private implicit val noopLoggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
   private def snsMessage[T: Encoder](topic: SnsTopicArn, detail: T, maybeSubject: Option[String]): Json =
-    snsMessage(topic.asJson, detail.asJson, maybeSubject.asJson)
-
-  private def snsMessage(topic: Json, detail: Json, subject: Json): Json =
     json"""{
              "Records": [
                {
@@ -35,9 +32,9 @@ class TerminationEventHandlerSpec
                  "Sns": {
                    "Type": "Notification",
                    "MessageId": "95df01b4-ee98-5cb9-9903-4c221d41eb5e",
-                   "TopicArn": $topic,
-                   "Subject": $subject,
-                   "Message": ${detail.noSpaces},
+                   "TopicArn": ${topic.asJson},
+                   "Subject": ${maybeSubject.asJson},
+                   "Message": ${detail.asJson.noSpaces},
                    "Timestamp": "1970-01-01T00:00:00.000Z",
                    "SignatureVersion": "1",
                    "Signature": "EXAMPLE",
@@ -69,7 +66,7 @@ class TerminationEventHandlerSpec
              "Time": "2019-02-20T20:01:15.747Z"
            }"""
 
-  test("TerminationEventHandler should handle a message") {
+  test("LifecycleHookHandler should handle a message") {
     forAllF { (arbSnsTopicArn: SnsTopicArn,
                arbContext: Context[IO],
                arbLifecycleHookNotification: LifecycleHookNotification,
@@ -79,7 +76,7 @@ class TerminationEventHandlerSpec
         deferredLifecycleHookNotification <- Deferred[IO, LifecycleHookNotification]
         deferredSnsTopicArn <- Deferred[IO, SnsTopicArn]
 
-        eventHandler = TerminationEventHandler { case (arn, notif) =>
+        eventHandler = LifecycleHookHandler { case (arn, notif) =>
           deferredLifecycleHookNotification.complete(notif) >> 
             deferredSnsTopicArn.complete(arn).void
         }
@@ -97,12 +94,12 @@ class TerminationEventHandlerSpec
     }
   }
 
-  test("TerminationEventHandler should handle a test notification message") {
+  test("LifecycleHookHandler should handle a test notification message") {
     forAllF { (arbSnsTopicArn: SnsTopicArn,
                arbContext: Context[IO],
                arbSubject: Option[String],
               ) =>
-      val eventHandler = TerminationEventHandler[IO] { case (arn, notif) =>
+      val eventHandler = LifecycleHookHandler { case (arn, notif) =>
         IO(fail(s"TerminationEventHandler should not be called for test messages, but was called with $arn and $notif"))
       }
 

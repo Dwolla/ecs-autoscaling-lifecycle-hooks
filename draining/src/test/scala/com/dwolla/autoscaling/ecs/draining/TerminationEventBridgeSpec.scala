@@ -17,7 +17,10 @@ class TerminationEventBridgeSpec
     with aws.ArbitraryInstances {
 
   test("TerminationEventBridge should mark a non-draining instance as draining and pause and recurse") {
-    forAllF { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
+    forAllF { (arbSnsTopicArn: SnsTopicArn, 
+               arbLifecycleHookNotification: LifecycleHookNotification, 
+               arbClusterArn: ClusterArn, 
+               arbConInstId: ContainerInstanceId) =>
       for {
         deferredDrainInstanceArgs <- Deferred[IO, (ClusterArn, ContainerInstance)]
         deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification)]
@@ -52,7 +55,10 @@ class TerminationEventBridgeSpec
   }
 
   test("TerminationEventBridge should pause and recurse if a draining instance still has tasks") {
-    forAllF { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
+    forAllF { (arbSnsTopicArn: SnsTopicArn, 
+               arbLifecycleHookNotification: LifecycleHookNotification, 
+               arbClusterArn: ClusterArn, 
+               arbConInstId: ContainerInstanceId) =>
       for {
         deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification)]
         expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerStatus.Draining)
@@ -79,7 +85,10 @@ class TerminationEventBridgeSpec
   }
 
   test("TerminationEventBridge should continue autoscaling if instance has no running tasks") {
-    forAllF { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification, arbClusterArn: ClusterArn, arbConInstId: ContainerInstanceId) =>
+    forAllF { (arbSnsTopicArn: SnsTopicArn, 
+               arbLifecycleHookNotification: LifecycleHookNotification, 
+               arbClusterArn: ClusterArn, 
+               arbConInstId: ContainerInstanceId) =>
       for {
         deferredLifecycleHookNotification <- Deferred[IO, LifecycleHookNotification]
         expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 0.asInstanceOf[TaskCount], ContainerStatus.Draining)

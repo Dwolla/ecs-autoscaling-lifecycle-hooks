@@ -68,6 +68,7 @@ lazy val `core-tests` = project
   .dependsOn(
     `autoscaling-ecs-core`,
     `aws-testkit`,
+    `feral-testkit`,
   )
 
 lazy val `autoscaling-ecs-draining-lambda` = project
