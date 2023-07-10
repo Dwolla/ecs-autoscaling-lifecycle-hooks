@@ -1,10 +1,10 @@
-package com.dwolla.aws.ecs.model
+package com.dwolla.aws.ecs
 
 import cats.Order
 import monix.newtypes.*
 import cats.syntax.all.*
 import com.dwolla.aws.AccountId
-import com.dwolla.aws.ec2.model.Ec2InstanceId
+import com.dwolla.aws.ec2.Ec2InstanceId
 
 type ContainerInstanceId = ContainerInstanceId.Type
 object ContainerInstanceId extends NewtypeWrapped[String]
@@ -26,25 +26,29 @@ case class Cluster(region: Region, accountId: AccountId, name: ClusterName) {
 case class ContainerInstance(containerInstanceId: ContainerInstanceId,
                              ec2InstanceId: Ec2InstanceId,
                              runningTaskCount: TaskCount,
-                             status: ContainerStatus,
+                             status: ContainerInstanceStatus,
                             )
 
-sealed trait ContainerStatus
-object ContainerStatus {
-  case object Active extends ContainerStatus {
-    override def toString: String = "ACTIVE"
-  }
-  case object Draining extends ContainerStatus {
-    override def toString: String = "DRAINING"
-  }
-  case object Inactive extends ContainerStatus {
-    override def toString: String = "INACTIVE"
-  }
+enum ContainerInstanceStatus {
+  case Active
+  case Draining
+  case Inactive
 
-  def fromStatus(s: String): Option[ContainerStatus] = s match {
+  override def toString: String = this match {
+    case Active => "ACTIVE"
+    case Draining => "DRAINING"
+    case Inactive => "INACTIVE"
+  }
+}
+
+object ContainerInstanceStatus {
+  def fromStatus(s: String): Option[ContainerInstanceStatus] = s match {
     case "ACTIVE" => Active.some
     case "INACTIVE" => Inactive.some
     case "DRAINING" =>  Draining.some
     case _ => None
   }
 }
+
+type TaskDefinitionArn = TaskDefinitionArn.Type
+object TaskDefinitionArn extends NewtypeWrapped[String]

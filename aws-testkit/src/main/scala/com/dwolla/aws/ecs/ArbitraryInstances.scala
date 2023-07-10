@@ -1,9 +1,9 @@
-package com.dwolla.aws.ecs.model
+package com.dwolla.aws.ecs
 
 import cats.implicits.*
 import com.dwolla.aws.AccountId
 import com.dwolla.aws.ArbitraryInstances.*
-import com.dwolla.aws.ec2.model.Ec2InstanceId
+import com.dwolla.aws.ec2.Ec2InstanceId
 import com.dwolla.RandomChunks
 import fs2.{Chunk, Stream}
 import org.scalacheck.*
@@ -21,15 +21,15 @@ trait ArbitraryInstances {
   lazy val genRegion: Gen[Region] = Gen.oneOf(software.amazon.awssdk.regions.Region.regions().asScala).map(x => Region(x.id()))
   implicit lazy val arbRegion: Arbitrary[Region] = Arbitrary(genRegion)
 
-  lazy val genContainerStatus: Gen[ContainerStatus] = Gen.oneOf(ContainerStatus.Active, ContainerStatus.Draining, ContainerStatus.Inactive)
-  implicit lazy val arbContainerStatus: Arbitrary[ContainerStatus] = Arbitrary(genContainerStatus)
+  lazy val genContainerInstanceStatus: Gen[ContainerInstanceStatus] = Gen.oneOf(ContainerInstanceStatus.Active, ContainerInstanceStatus.Draining, ContainerInstanceStatus.Inactive)
+  implicit lazy val arbContainerInstanceStatus: Arbitrary[ContainerInstanceStatus] = Arbitrary(genContainerInstanceStatus)
 
   lazy val genContainerInstance: Gen[ContainerInstance] =
     for {
       cId <- arbitrary[ContainerInstanceId]
       ec2Id <- arbitrary[Ec2InstanceId]
       taskCount <- arbitrary[TaskCount]
-      status <- arbitrary[ContainerStatus]
+      status <- arbitrary[ContainerInstanceStatus]
     } yield ContainerInstance(cId, ec2Id, taskCount, status)
   implicit lazy val arbContainerInstance: Arbitrary[ContainerInstance] = Arbitrary(genContainerInstance)
 

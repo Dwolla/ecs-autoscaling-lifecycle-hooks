@@ -5,10 +5,10 @@ import cats.data.OptionT
 import cats.effect.*
 import cats.implicits.*
 import com.amazonaws.ecs.ContainerInstanceStatus.DRAINING
-import com.amazonaws.ecs.{BoxedInteger, ContainerInstanceField, ContainerInstanceStatus, DescribeContainerInstancesResponse, ECS, ListClustersResponse, ListContainerInstancesResponse, UpdateContainerInstancesStateResponse, ContainerInstance as AwsContainerInstance}
+import com.amazonaws.ecs.{BoxedInteger, ContainerInstanceField, DescribeContainerInstancesResponse, ECS, ListClustersResponse, ListContainerInstancesResponse, UpdateContainerInstancesStateResponse, ContainerInstance as AwsContainerInstance}
 import com.dwolla.aws.ArbitraryInstances
 import com.dwolla.NextPageTokens.tokenForIdx
-import com.dwolla.aws.ecs.model.*
+import com.dwolla.aws.ecs.*
 import fs2.{Chunk, Stream}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
@@ -82,7 +82,7 @@ class EcsAlgImplSpec
                                         filter: Option[String],
                                         nextToken: Option[String],
                                         maxResults: Option[BoxedInteger],
-                                        status: Option[ContainerInstanceStatus]): F[ListContainerInstancesResponse] = {
+                                        status: Option[com.amazonaws.ecs.ContainerInstanceStatus]): F[ListContainerInstancesResponse] = {
       listContainerInstancesResponses(cluster.map(ClusterArn(_)) -> nextToken).pure[F]
     }
 
@@ -149,15 +149,15 @@ class EcsAlgImplSpec
 
   test("EcsAlg should update the given instance's status to Draining if it's not already") {
     forAllF { (cluster: ClusterArn, ci: ContainerInstance) =>
-      val activeContainerInstance = ci.copy(status = ContainerStatus.Active)
+      val activeContainerInstance = ci.copy(status = ContainerInstanceStatus.Active)
 
       for {
         deferredContainerInstances <- Deferred[IO, List[ContainerInstanceId]]
-        deferredStatus <- Deferred[IO, ContainerInstanceStatus]
+        deferredStatus <- Deferred[IO, com.amazonaws.ecs.ContainerInstanceStatus]
         deferredCluster <- Deferred[IO, Option[ClusterArn]]
         fakeEcsClient: ECS[IO] = new FakeECS[IO] {
               override def updateContainerInstancesState(containerInstances: List[String],
-                                                         status: ContainerInstanceStatus,
+                                                         status: com.amazonaws.ecs.ContainerInstanceStatus,
                                                          cluster: Option[String]): IO[UpdateContainerInstancesStateResponse] =
                 deferredContainerInstances.complete(containerInstances.map(ContainerInstanceId(_))) >>
                   deferredStatus.complete(status) >>
@@ -178,9 +178,9 @@ class EcsAlgImplSpec
 
   test("EcsAlg should ignore requests to change the status of instances that are already draining") {
     forAllF { (cluster: ClusterArn, ci: ContainerInstance) =>
-      val activeContainerInstance = ci.copy(status = ContainerStatus.Draining)
+      val activeContainerInstance = ci.copy(status = ContainerInstanceStatus.Draining)
 
-      EcsAlg[IO](new FakeECS[IO] ).drainInstance(cluster, activeContainerInstance)
+      EcsAlg[IO](new FakeECS[IO] {}).drainInstance(cluster, activeContainerInstance)
     }
   }
 }

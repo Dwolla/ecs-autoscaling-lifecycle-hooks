@@ -1,8 +1,8 @@
 package com.dwolla.aws.ecs
 
 import cats.effect.*
-import com.dwolla.aws.ec2.model.Ec2InstanceId
-import com.dwolla.aws.ecs.model.{ClusterArn, ContainerInstance}
+import com.dwolla.aws.ec2.*
+import com.dwolla.aws.ecs.*
 
 abstract class TestEcsAlg extends EcsAlg[IO, List] {
   override def listClusterArns: List[ClusterArn] = ???

@@ -11,6 +11,7 @@ ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
   mergeMinors = true,
 ))}
 topLevelDirectory := None
+ThisBuild / scalacOptions += "-source:future"
 
 lazy val `smithy4s-generated` = project
   .in(file("smithy4s"))

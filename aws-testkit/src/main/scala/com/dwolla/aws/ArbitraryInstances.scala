@@ -5,10 +5,10 @@ import org.scalacheck.*
 object ArbitraryInstances extends ArbitraryInstances
 
 trait ArbitraryInstances
-  extends autoscaling.model.ArbitraryInstances
-    with ecs.model.ArbitraryInstances
-    with ec2.model.ArbitraryInstances
-    with sns.model.ArbitraryInstances {
+  extends autoscaling.ArbitraryInstances
+    with ecs.ArbitraryInstances
+    with ec2.ArbitraryInstances
+    with sns.ArbitraryInstances {
 
   implicit val arbAccountId: Arbitrary[AccountId] =
     Arbitrary(Gen.listOfN(12, Gen.numChar).map(_.mkString).map(AccountId(_)))

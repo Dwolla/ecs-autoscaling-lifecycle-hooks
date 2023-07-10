@@ -1,10 +1,10 @@
-package com.dwolla.aws.autoscaling.model
+package com.dwolla.aws.autoscaling
 
 import java.time.*
 
 import com.dwolla.aws.AccountId
 import com.dwolla.aws.ArbitraryInstances.*
-import com.dwolla.aws.ec2.model.Ec2InstanceId
+import com.dwolla.aws.ec2.Ec2InstanceId
 import com.fortysevendeg.scalacheck.datetime.jdk8.ArbitraryJdk8.*
 import org.scalacheck.Arbitrary.{arbitrary, arbUuid}
 import org.scalacheck.*

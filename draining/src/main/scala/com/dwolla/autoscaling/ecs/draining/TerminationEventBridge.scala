@@ -2,11 +2,9 @@ package com.dwolla.autoscaling.ecs.draining
 
 import cats.*
 import cats.syntax.all.*
-import com.dwolla.aws.autoscaling.AutoScalingAlg
-import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
-import com.dwolla.aws.ecs.EcsAlg
-import com.dwolla.aws.ecs.model.TaskCount
-import com.dwolla.aws.sns.model.SnsTopicArn
+import com.dwolla.aws.autoscaling.*
+import com.dwolla.aws.ecs.*
+import com.dwolla.aws.sns.SnsTopicArn
 
 class TerminationEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G], AutoScaling: AutoScalingAlg[F]) {
   def apply(topic: SnsTopicArn, lifecycleHook: LifecycleHookNotification): F[Unit] =

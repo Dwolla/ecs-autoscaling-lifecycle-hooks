@@ -1,8 +1,8 @@
-package com.dwolla.aws.sns.model
+package com.dwolla.aws.sns
 
 import com.dwolla.aws.AccountId
 import com.dwolla.aws.ArbitraryInstances.*
-import com.dwolla.aws.ecs.model.Region
+import com.dwolla.aws.ecs.Region
 import org.scalacheck.{Arbitrary, Gen}
 import org.scalacheck.Arbitrary.arbitrary
 

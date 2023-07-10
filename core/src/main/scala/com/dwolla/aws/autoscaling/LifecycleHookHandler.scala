@@ -2,9 +2,7 @@ package com.dwolla.aws.autoscaling
 
 import cats.*
 import cats.syntax.all.*
-import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
-import com.dwolla.aws.sns.ParseLifecycleHookNotification
-import com.dwolla.aws.sns.model.SnsTopicArn
+import com.dwolla.aws.sns.*
 import feral.lambda.{INothing, LambdaEnv}
 import feral.lambda.events.SnsEvent
 import fs2.Stream

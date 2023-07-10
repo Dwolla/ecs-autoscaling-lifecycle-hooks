@@ -2,9 +2,9 @@ package com.dwolla.aws.ecs
 
 import cats.*
 import cats.syntax.all.*
-import com.amazonaws.ecs.{ContainerInstanceStatus, ECS}
-import com.dwolla.aws.ec2.model.*
-import com.dwolla.aws.ecs.model.*
+import com.amazonaws.ecs.ECS
+import com.dwolla.aws.ec2.*
+import com.dwolla.aws.ecs.*
 import com.dwolla.fs2utils.Pagination
 import fs2.*
 import org.typelevel.log4cats.{Logger, LoggerFactory}
@@ -14,7 +14,7 @@ abstract class EcsAlg[F[_] : Applicative, G[_]] {
   def listContainerInstances(cluster: ClusterArn): G[ContainerInstance]
   def findEc2Instance(ec2InstanceId: Ec2InstanceId): F[Option[(ClusterArn, ContainerInstance)]]
   def drainInstance(cluster: ClusterArn, ci: ContainerInstance): F[Unit] =
-    Applicative[F].unlessA(ci.status == ContainerStatus.Draining)(drainInstanceImpl(cluster, ci))
+    drainInstanceImpl(cluster, ci).unlessA(ci.status == ContainerInstanceStatus.Draining)
 
   protected def drainInstanceImpl(cluster: ClusterArn, ci: ContainerInstance): F[Unit]
 }
@@ -46,7 +46,7 @@ object EcsAlg {
         .map(_.containerInstances.map(Chunk.iterable(_)).getOrElse(Chunk.empty))
         .unchunks
         .map { ci =>
-          (ci.containerInstanceArn.map(ContainerInstanceId(_)), ci.ec2InstanceId.map(Ec2InstanceId(_)), ci.status.flatMap(ContainerStatus.fromStatus))
+          (ci.containerInstanceArn.map(ContainerInstanceId(_)), ci.ec2InstanceId.map(Ec2InstanceId(_)), ci.status.flatMap(ContainerInstanceStatus.fromStatus))
             .mapN(ContainerInstance(_, _, TaskCount(ci.runningTasksCount), _))
         }
         .unNone
@@ -65,7 +65,7 @@ object EcsAlg {
     override protected def drainInstanceImpl(cluster: ClusterArn, ci: ContainerInstance): F[Unit] =
       LoggerFactory[F].create.flatMap { implicit L =>
         Logger[F].info(s"draining instance $ci in cluster $cluster") >>
-          ecs.updateContainerInstancesState(List(ci.containerInstanceId.value), ContainerInstanceStatus.DRAINING, cluster.value.some)
+          ecs.updateContainerInstancesState(List(ci.containerInstanceId.value), com.amazonaws.ecs.ContainerInstanceStatus.DRAINING, cluster.value.some)
             .void
       }
   }

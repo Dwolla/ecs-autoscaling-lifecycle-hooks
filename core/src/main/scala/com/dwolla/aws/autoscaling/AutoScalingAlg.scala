@@ -1,18 +1,15 @@
 package com.dwolla.aws.autoscaling
 
 import cats.effect.*
-import cats.syntax.all.*
 import cats.effect.syntax.all.*
+import cats.syntax.all.*
+import com.dwolla.aws.sns.*
 import io.circe.syntax.*
+import org.typelevel.log4cats.{Logger, LoggerFactory}
+import software.amazon.awssdk.services.autoscaling.*
 import software.amazon.awssdk.services.autoscaling.model.CompleteLifecycleActionRequest
-import software.amazon.awssdk.services.sns.model.PublishRequest
 
 import scala.concurrent.duration.*
-import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
-import com.dwolla.aws.sns.model.SnsTopicArn
-import org.typelevel.log4cats.{Logger, LoggerFactory}
-import software.amazon.awssdk.services.autoscaling.AutoScalingAsyncClient
-import software.amazon.awssdk.services.sns.SnsAsyncClient
 
 trait AutoScalingAlg[F[_]] {
   def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): F[Unit]
@@ -21,29 +18,19 @@ trait AutoScalingAlg[F[_]] {
 
 object AutoScalingAlg {
   def apply[F[_] : Async : LoggerFactory](autoScalingClient: AutoScalingAsyncClient,
-                                          snsClient: SnsAsyncClient): AutoScalingAlg[F] =
-    new AutoScalingAlgImpl(autoScalingClient, snsClient)
+                                          sns: SnsAlg[F]): AutoScalingAlg[F] =
+    new AutoScalingAlgImpl(autoScalingClient, sns)
 }
 
 class AutoScalingAlgImpl[F[_] : Async : LoggerFactory](autoScalingClient: AutoScalingAsyncClient,
-                                                       snsClient: SnsAsyncClient) extends AutoScalingAlg[F] {
+                                                       sns: SnsAlg[F]) extends AutoScalingAlg[F] {
   override def pauseAndRecurse(t: SnsTopicArn, l: LifecycleHookNotification): F[Unit] = {
-    val req = PublishRequest.builder()
-      .topicArn(t.value)
-      .message(l.asJson.noSpaces)
-      .build()
-
     val sleepDuration = 5.seconds
 
-    LoggerFactory[F].create.flatMap { implicit l =>
+    LoggerFactory[F].create.flatMap { implicit logger =>
       Logger[F].info(s"Sleeping for $sleepDuration, then restarting Lambda") >>
-        Async[F]
-          .fromCompletableFuture {
-            Sync[F]
-              .delay(snsClient.publish(req))
-              .delayBy(sleepDuration)
-          }
-          .void
+        sns.publish(t, l.asJson.noSpaces)
+          .delayBy(sleepDuration)
     }
   }
 

@@ -1,7 +1,7 @@
-package com.dwolla.aws.sns.model
+package com.dwolla.aws.sns
 
 import io.circe.*
-import monix.newtypes.NewtypeWrapped
+import monix.newtypes.*
 
 type SnsTopicArn = SnsTopicArn.Type
 object SnsTopicArn extends NewtypeWrapped[String] {

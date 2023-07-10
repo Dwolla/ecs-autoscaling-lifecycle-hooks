@@ -4,8 +4,7 @@ import cats.effect.*
 import cats.effect.std.Dispatcher
 import cats.effect.testkit.TestControl
 import com.dwolla.aws.ArbitraryInstances
-import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
-import com.dwolla.aws.sns.model.SnsTopicArn
+import com.dwolla.aws.sns.{SnsAlg, SnsTopicArn}
 import io.circe.syntax.*
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
@@ -13,8 +12,6 @@ import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
 import software.amazon.awssdk.services.autoscaling.AutoScalingAsyncClient
 import software.amazon.awssdk.services.autoscaling.model.{CompleteLifecycleActionRequest, CompleteLifecycleActionResponse}
-import software.amazon.awssdk.services.sns.SnsAsyncClient
-import software.amazon.awssdk.services.sns.model.{PublishRequest, PublishResponse}
 
 import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.*
@@ -42,15 +39,12 @@ class AutoScalingAlgImplSpec
               }
           }
 
-          snsClient = new SnsAsyncClient {
-            override def serviceName(): String = "FakeSnsAsyncClient"
-            override def close(): Unit = ()
-
-            override def publish(publishRequest: PublishRequest): CompletableFuture[PublishResponse] =
-              CompletableFuture.failedFuture(new RuntimeException("SnsAsyncClient.publish should not have been called"))
+          sns = new SnsAlg[IO] {
+            override def publish(topic: SnsTopicArn, message: String): IO[Unit] =
+              IO.raiseError(new RuntimeException("SnsAsyncClient.publish should not have been called"))
           }
 
-          _ <- new AutoScalingAlgImpl[IO](autoScalingClient, snsClient).continueAutoScaling(arbLifecycleHookNotification)
+          _ <- new AutoScalingAlgImpl(autoScalingClient, sns).continueAutoScaling(arbLifecycleHookNotification)
 
           passedReq <- deferredCompleteLifecycleActionRequest.get
         } yield {
@@ -66,7 +60,7 @@ class AutoScalingAlgImplSpec
   test("AutoScalingAlgImpl should pause 5 seconds and then send a message to restart the lambda") {
     forAllF { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification) =>
       for {
-        capturedPublishRequest <- Deferred[IO, PublishRequest]
+        capturedPublishRequest <- Deferred[IO, (SnsTopicArn, String)]
         control <- TestControl.execute {
           Dispatcher.sequential[IO](await = true).use { dispatcher =>
             val autoScalingClient = new AutoScalingAsyncClient {
@@ -78,19 +72,12 @@ class AutoScalingAlgImplSpec
               }
             }
 
-            val snsClient = new SnsAsyncClient {
-              override def serviceName(): String = "FakeSnsAsyncClient"
-              override def close(): Unit = ()
-
-              override def publish(publishRequest: PublishRequest): CompletableFuture[PublishResponse] =
-                dispatcher.unsafeToCompletableFuture {
-                  capturedPublishRequest
-                    .complete(publishRequest)
-                    .as(PublishResponse.builder().build())
-                }
+            val sns = new SnsAlg[IO] {
+              override def publish(topic: SnsTopicArn, message: String): IO[Unit] =
+                capturedPublishRequest.complete((topic, message)).void
             }
 
-            AutoScalingAlg[IO](autoScalingClient, snsClient)
+            AutoScalingAlg[IO](autoScalingClient, sns)
               .pauseAndRecurse(arbSnsTopicArn, arbLifecycleHookNotification)
           }
         }
@@ -104,12 +91,12 @@ class AutoScalingAlgImplSpec
 
         _ <- control.advanceAndTick(1.minute)
 
-        publishedRequest <- capturedPublishRequest.get.timeout(2.seconds)
+        (publishedTopic, publishedMessage) <- capturedPublishRequest.get.timeout(2.seconds)
         result <- control.results
       } yield {
         assert(firstIsEmpty.isEmpty)
-        assertEquals(publishedRequest.topicArn(), arbSnsTopicArn.value)
-        assertEquals(publishedRequest.message(), arbLifecycleHookNotification.asJson.noSpaces)
+        assertEquals(publishedTopic, arbSnsTopicArn)
+        assertEquals(publishedMessage, arbLifecycleHookNotification.asJson.noSpaces)
         assert(result.isDefined)
       }
     }

@@ -2,9 +2,10 @@ package com.dwolla.aws.sns
 
 import cats.*
 import cats.syntax.all.*
-import com.dwolla.aws.autoscaling.model.{AutoScalingSnsMessage, LifecycleHookNotification, TestNotification}
-import com.dwolla.aws.sns.model.SnsTopicArn
+import com.dwolla.aws.autoscaling.*
+import com.dwolla.aws.sns.*
 import feral.lambda.events.SnsMessage
+import io.circe.*
 import org.typelevel.log4cats.LoggerFactory
 
 object ParseLifecycleHookNotification {

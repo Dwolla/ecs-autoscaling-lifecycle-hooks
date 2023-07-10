@@ -1,4 +1,4 @@
-package com.dwolla.aws.ec2.model
+package com.dwolla.aws.ec2
 
 import org.scalacheck.*
 

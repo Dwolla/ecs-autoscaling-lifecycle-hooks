@@ -3,11 +3,9 @@ package com.dwolla.autoscaling.ecs.draining
 import cats.effect.*
 import com.dwolla.aws
 import com.dwolla.aws.autoscaling.*
-import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
-import com.dwolla.aws.ec2.model.Ec2InstanceId
+import com.dwolla.aws.ec2.Ec2InstanceId
 import com.dwolla.aws.ecs.*
-import com.dwolla.aws.ecs.model.*
-import com.dwolla.aws.sns.model.SnsTopicArn
+import com.dwolla.aws.sns.SnsTopicArn
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
 
@@ -24,7 +22,7 @@ class TerminationEventBridgeSpec
       for {
         deferredDrainInstanceArgs <- Deferred[IO, (ClusterArn, ContainerInstance)]
         deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification)]
-        expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerStatus.Active)
+        expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerInstanceStatus.Active)
 
         ecsAlg = new TestEcsAlg {
           override def findEc2Instance(ec2InstanceId: Ec2InstanceId) =
@@ -40,14 +38,11 @@ class TerminationEventBridgeSpec
 
         _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbSnsTopicArn, arbLifecycleHookNotification)
 
-        deferredArgs <- deferredDrainInstanceArgs.get
-        (drainedClusterId, drainedContainerInstance) = deferredArgs
-
-        dpar <- deferredPauseAndRecurse.get
-        (topic, lifecycleHook) = dpar
+        (drainedClusterId, drainedContainerInstance) <- deferredDrainInstanceArgs.get
+        (topic, lifecycleHook) <- deferredPauseAndRecurse.get
       } yield {
         assertEquals(drainedClusterId, arbClusterArn)
-        assertEquals(drainedContainerInstance, ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerStatus.Active))
+        assertEquals(drainedContainerInstance, ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerInstanceStatus.Active))
         assertEquals(topic, arbSnsTopicArn)
         assertEquals(lifecycleHook, arbLifecycleHookNotification)
       }
@@ -61,7 +56,7 @@ class TerminationEventBridgeSpec
                arbConInstId: ContainerInstanceId) =>
       for {
         deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification)]
-        expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerStatus.Draining)
+        expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerInstanceStatus.Draining)
 
         ecsAlg = new TestEcsAlg {
           override def findEc2Instance(ec2InstanceId: Ec2InstanceId) =
@@ -75,8 +70,7 @@ class TerminationEventBridgeSpec
 
         _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbSnsTopicArn, arbLifecycleHookNotification)
 
-        dpar <- deferredPauseAndRecurse.get
-        (topic, lifecycleHook) = dpar
+        (topic, lifecycleHook) <- deferredPauseAndRecurse.get
       } yield {
         assertEquals(topic, arbSnsTopicArn)
         assertEquals(lifecycleHook, arbLifecycleHookNotification)
@@ -91,7 +85,7 @@ class TerminationEventBridgeSpec
                arbConInstId: ContainerInstanceId) =>
       for {
         deferredLifecycleHookNotification <- Deferred[IO, LifecycleHookNotification]
-        expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 0.asInstanceOf[TaskCount], ContainerStatus.Draining)
+        expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 0.asInstanceOf[TaskCount], ContainerInstanceStatus.Draining)
 
         ecsAlg = new TestEcsAlg {
           override def findEc2Instance(ec2InstanceId: Ec2InstanceId) =

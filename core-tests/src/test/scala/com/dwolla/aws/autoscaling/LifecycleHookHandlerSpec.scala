@@ -6,8 +6,7 @@ import _root_.io.circe.syntax.*
 import cats.effect.*
 import cats.syntax.all.*
 import com.dwolla.aws.ArbitraryInstances
-import com.dwolla.aws.autoscaling.model.LifecycleHookNotification
-import com.dwolla.aws.sns.model.SnsTopicArn
+import com.dwolla.aws.sns.SnsTopicArn
 import feral.lambda.events.SnsEvent
 import feral.lambda.{Context, ContextInstances, LambdaEnv}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}

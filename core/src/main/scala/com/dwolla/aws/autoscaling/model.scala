@@ -1,8 +1,9 @@
-package com.dwolla.aws.autoscaling.model
+package com.dwolla.aws.autoscaling
 
+import cats.FlatMap
 import cats.syntax.all.*
 import com.dwolla.aws.AccountId
-import com.dwolla.aws.ec2.model.Ec2InstanceId
+import com.dwolla.aws.ec2.Ec2InstanceId
 import io.circe.*
 import monix.newtypes.integrations.*
 
@@ -105,4 +106,19 @@ object AutoScalingSnsMessage {
   implicit val autoScalingSnsMessageDecoder: Decoder[AutoScalingSnsMessage] =
     Decoder[LifecycleHookNotification].widen[AutoScalingSnsMessage]
       .or(Decoder[TestNotification].widen[AutoScalingSnsMessage])
+}
+
+enum AdvanceLifecycleHook {
+  case PauseAndRecurse
+  case ContinueAutoScaling
+}
+
+object AdvanceLifecycleHook {
+  extension [F[_]](cas: F[AdvanceLifecycleHook])(using FlatMap[F]) {
+    def fold[B](ifPause: => F[B], ifContinue: => F[B]): F[B] =
+      cas.flatMap {
+        case PauseAndRecurse => ifPause
+        case ContinueAutoScaling => ifContinue
+      }
+  }
 }
