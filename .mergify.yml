@@ -55,6 +55,14 @@ pull_request_rules:
       add:
       - feral-testkit
       remove: []
+- name: Label registrator-health-check PRs
+  conditions:
+  - files~=^registrator-health-check/
+  actions:
+    label:
+      add:
+      - registrator-health-check
+      remove: []
 - name: Label smithy4s PRs
   conditions:
   - files~=^smithy4s/

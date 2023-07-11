@@ -50,5 +50,28 @@ object ContainerInstanceStatus {
   }
 }
 
+type TaskArn = TaskArn.Type
+object TaskArn extends NewtypeWrapped[String]
+
 type TaskDefinitionArn = TaskDefinitionArn.Type
 object TaskDefinitionArn extends NewtypeWrapped[String]
+
+enum TaskStatus {
+  case Pending
+  case Running
+  case Stopped
+
+  override def toString: String = this match {
+    case Pending => "PENDING"
+    case Running => "RUNNING"
+    case Stopped => "STOPPED"
+  }
+}
+object TaskStatus {
+  def fromString(s: String): Option[TaskStatus] =
+    s match {
+      case "PENDING" => TaskStatus.Pending.some
+      case "RUNNING" => TaskStatus.Running.some
+      case "STOPPED" => TaskStatus.Stopped.some
+    }
+}

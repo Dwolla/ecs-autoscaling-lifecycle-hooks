@@ -21,16 +21,21 @@ provider:
         - Sid: CorePermissions
           Action:
             - "autoscaling:CompleteLifecycleAction"
+            - "autoscaling:DescribeAutoScalingInstances"
             - "ecs:ListClusters"
             - "ecs:ListContainerInstances"
             - "ecs:DescribeContainerInstances"
             - "ecs:UpdateContainerInstancesState"
+            - "ecs:ListTasks"
+            - "ecs:DescribeTasks"
+            - "ec2:DescribeInstances"
+            - "cloudformation:DescribeStackResource"
           Resource: "*"
           Effect: Allow
         - Sid: RepublishMessages
           Effect: Allow
           Resource:
-            - Ref: SNSTopicAutoScalingEcsDrainingNotification
+            - Ref: SNSTopicAutoScalingLifecycleHookNotifications
           Action:
             - sqs:SendMessage
             - sqs:GetQueueUrl
@@ -51,25 +56,47 @@ package:
   individually: true
 
 functions:
-  TerminationHook:
+  DrainOnTermination:
     handler: com.dwolla.autoscaling.ecs.draining.TerminationEventHandler
     package:
       artifact: ${env:DRAINING_ARTIFACT_PATH}
     events:
       - sns:
           arn:
-            Ref: SNSTopicAutoScalingEcsDrainingNotification
+            Ref: SNSTopicAutoScalingLifecycleHookNotifications
           topicName: AutoScalingEcsDrainingNotification
+          filterPolicyScope: MessageBody
+          filterPolicy:
+            LifecycleTransition:
+              - "autoscaling:EC2_INSTANCE_TERMINATING"
+            LifecycleHookName:
+              - drain-ecs-container-instance
+
+  ConfirmRegistratorHealth:
+    handler: com.dwolla.autoscaling.ecs.registrator.ScaleOutPendingEventHandler
+    package:
+      artifact: ${env:REGISTRATOR_ARTIFACT_PATH}
+    events:
+      - sns:
+          arn:
+            Ref: SNSTopicAutoScalingLifecycleHookNotifications
+          topicName: SNSTopicAutoScalingEcsScaleOutNotification
+          filterPolicyScope: MessageBody
+          filterPolicy:
+            LifecycleTransition:
+              - "autoscaling:EC2_INSTANCE_LAUNCHING"
+            LifecycleHookName:
+              - confirm-registrator-is-healthy-on-scale-out
 
 resources:
   Description:
-    Auto Scaling Lifecycle Hook that ensures an ECS Container Instance is fully drained before it is terminated by Auto Scaling
+    Auto Scaling Lifecycle Hooks for ECS Container Instances
   Resources:
-    SNSTopicAutoScalingEcsDrainingNotification:
+    SNSTopicAutoScalingLifecycleHookNotifications:
       Type: AWS::SNS::Topic
       Properties:
-        TopicName: AutoScalingEcsDrainingNotification
-    AllowPublishToSNSTopicAutoScalingEcsDrainingNotification:
+        TopicName: AutoScalingLifecycleHookNotifications
+    AllowPublishToSNSTopicAutoScalingLifecycleHookNotifications:
       Type: AWS::IAM::Role
       Properties:
         AssumeRolePolicyDocument:
@@ -81,35 +108,35 @@ resources:
               Action:
                 - sts:AssumeRole
         Policies:
-          - PolicyName: AllowPublishToSNSTopicAutoScalingEcsDrainingNotification
+          - PolicyName: AllowPublishToSNSTopicAutoScalingLifecycleHookNotifications
             PolicyDocument:
               Version: "2012-10-17"
               Statement:
                 - Effect: Allow
                   Resource:
-                    - Ref: SNSTopicAutoScalingEcsDrainingNotification
+                    - Ref: SNSTopicAutoScalingLifecycleHookNotifications
                   Action:
                     - sqs:SendMessage
                     - sqs:GetQueueUrl
                     - sns:Publish
 
   Outputs:
-    SNSTopicAutoScalingEcsDrainingNotification:
+    SNSTopicAutoScalingLifecycleHookNotifications:
       Value:
-        Ref: SNSTopicAutoScalingEcsDrainingNotification
+        Ref: SNSTopicAutoScalingLifecycleHookNotifications
       Description:
         Topic used by Auto Scaling to send notifications when instance state is changing
       Export:
-        Name: sls-${self:service}-${opt:stage}-SNSTopicAutoScalingEcsDrainingNotification
-    AllowPublishToSNSTopicAutoScalingEcsDrainingNotification:
+        Name: sls-${self:service}-${opt:stage}-SNSTopicAutoScalingLifecycleHookNotifications
+    AllowPublishToSNSTopicAutoScalingLifecycleHookNotifications:
       Value:
         Fn::GetAtt:
-          - AllowPublishToSNSTopicAutoScalingEcsDrainingNotification
+          - AllowPublishToSNSTopicAutoScalingLifecycleHookNotifications
           - Arn
       Export:
-        Name: sls-${self:service}-${opt:stage}-AllowPublishToSNSTopicAutoScalingEcsDrainingNotification
+        Name: sls-${self:service}-${opt:stage}-AllowPublishToSNSTopicAutoScalingLifecycleHookNotifications
       Description:
-        IAM Role to allow Auto Scaling to publish to the SNS Topic for termination lifecycle hooks on ECS instances
+        IAM Role to allow Auto Scaling to publish to the SNS Topic for ECS instance lifecycle hooks
 
 custom:
   EnvironmentTag:

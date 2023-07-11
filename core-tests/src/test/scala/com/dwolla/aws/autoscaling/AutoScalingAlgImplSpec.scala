@@ -4,17 +4,20 @@ import cats.effect.*
 import cats.effect.std.Dispatcher
 import cats.effect.testkit.TestControl
 import com.dwolla.aws.ArbitraryInstances
+import com.dwolla.aws.autoscaling.LifecycleState.*
 import com.dwolla.aws.sns.{SnsAlg, SnsTopicArn}
+import com.dwolla.aws.ec2.Ec2InstanceId
 import io.circe.syntax.*
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
 import software.amazon.awssdk.services.autoscaling.AutoScalingAsyncClient
-import software.amazon.awssdk.services.autoscaling.model.{CompleteLifecycleActionRequest, CompleteLifecycleActionResponse}
+import software.amazon.awssdk.services.autoscaling.model.{LifecycleState as _, *}
 
 import java.util.concurrent.CompletableFuture
 import scala.concurrent.duration.*
+import scala.jdk.CollectionConverters.*
 
 class AutoScalingAlgImplSpec
   extends CatsEffectSuite
@@ -48,8 +51,8 @@ class AutoScalingAlgImplSpec
 
           passedReq <- deferredCompleteLifecycleActionRequest.get
         } yield {
-          assertEquals(passedReq.lifecycleHookName(), arbLifecycleHookNotification.lifecycleHookName)
-          assertEquals(passedReq.autoScalingGroupName(), arbLifecycleHookNotification.autoScalingGroupName)
+          assertEquals(LifecycleHookName(passedReq.lifecycleHookName()), arbLifecycleHookNotification.lifecycleHookName)
+          assertEquals(AutoScalingGroupName(passedReq.autoScalingGroupName()), arbLifecycleHookNotification.autoScalingGroupName)
           assertEquals(passedReq.lifecycleActionResult(), "CONTINUE")
           assertEquals(passedReq.instanceId(), arbLifecycleHookNotification.EC2InstanceId.value)
         }
@@ -57,15 +60,26 @@ class AutoScalingAlgImplSpec
     }
   }
 
-  test("AutoScalingAlgImpl should pause 5 seconds and then send a message to restart the lambda") {
-    forAllF { (arbSnsTopicArn: SnsTopicArn, arbLifecycleHookNotification: LifecycleHookNotification) =>
+  test("AutoScalingAlgImpl should pause 5 seconds and then send a message to restart the lambda, but only if the Lifecycle Action is still active") {
+    forAllF { (arbSnsTopicArn: SnsTopicArn,
+               notifAndResp: (LifecycleHookNotification, DescribeAutoScalingInstancesResponse),
+              ) =>
+      val (arbLifecycleHookNotification, arbDescribeAutoScalingInstancesResponse) = notifAndResp
       for {
-        capturedPublishRequest <- Deferred[IO, (SnsTopicArn, String)]
+        capturedPublishRequests <- Ref[IO].of(Set.empty[(SnsTopicArn, String)])
         control <- TestControl.execute {
           Dispatcher.sequential[IO](await = true).use { dispatcher =>
             val autoScalingClient = new AutoScalingAsyncClient {
               override def serviceName(): String = "FakeAutoScalingAsyncClient"
               override def close(): Unit = ()
+
+              override def describeAutoScalingInstances(req: DescribeAutoScalingInstancesRequest): CompletableFuture[DescribeAutoScalingInstancesResponse] =
+                dispatcher.unsafeToCompletableFuture(IO {
+                  if (req.instanceIds().contains(arbLifecycleHookNotification.EC2InstanceId.value))
+                    arbDescribeAutoScalingInstancesResponse
+                  else
+                    DescribeAutoScalingInstancesResponse.builder().build()
+                })
 
               override def completeLifecycleAction(completeLifecycleActionRequest: CompleteLifecycleActionRequest): CompletableFuture[CompleteLifecycleActionResponse] = {
                 CompletableFuture.failedFuture(new RuntimeException("AutoScalingAsyncClient.completeLifecycleAction should not have been called"))
@@ -74,7 +88,7 @@ class AutoScalingAlgImplSpec
 
             val sns = new SnsAlg[IO] {
               override def publish(topic: SnsTopicArn, message: String): IO[Unit] =
-                capturedPublishRequest.complete((topic, message)).void
+                capturedPublishRequests.update(_ + (topic -> message)).void
             }
 
             AutoScalingAlg[IO](autoScalingClient, sns)
@@ -84,19 +98,33 @@ class AutoScalingAlgImplSpec
         _ <- control.tick
         _ <- control.tickFor(4.seconds)
 
-        firstIsEmpty <- capturedPublishRequest.tryGet //.map(_.isEmpty)
+        firstShouldBeEmpty <- capturedPublishRequests.get
 
         _ <- control.tickAll
         _ <- control.tickAll
 
         _ <- control.advanceAndTick(1.minute)
 
-        (publishedTopic, publishedMessage) <- capturedPublishRequest.get.timeout(2.seconds)
+        finalCapturedPublishRequests <- capturedPublishRequests.get
         result <- control.results
       } yield {
-        assert(firstIsEmpty.isEmpty)
-        assertEquals(publishedTopic, arbSnsTopicArn)
-        assertEquals(publishedMessage, arbLifecycleHookNotification.asJson.noSpaces)
+        assert(firstShouldBeEmpty.isEmpty)
+
+        val arbLifecycleState: Option[LifecycleState] =
+          arbDescribeAutoScalingInstancesResponse
+            .autoScalingInstances()
+            .asScala
+            .collectFirst {
+              case instance if Ec2InstanceId(instance.instanceId()) == arbLifecycleHookNotification.EC2InstanceId =>
+                LifecycleState.fromString(instance.lifecycleState())
+            }
+            .flatten
+        
+        if (arbLifecycleState.contains(PendingWait)) {
+          assert(finalCapturedPublishRequests.contains(arbSnsTopicArn -> arbLifecycleHookNotification.asJson.noSpaces))
+        } else {
+          assert(finalCapturedPublishRequests.isEmpty, s"Input Lifecycle State was $arbLifecycleState, so we should have stopped without publishing any messages")
+        }
         assert(result.isDefined)
       }
     }

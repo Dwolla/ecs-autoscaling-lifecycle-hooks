@@ -5,9 +5,19 @@ import cats.syntax.all.*
 import com.dwolla.aws.AccountId
 import com.dwolla.aws.ec2.Ec2InstanceId
 import io.circe.*
+import monix.newtypes.NewtypeWrapped
 import monix.newtypes.integrations.*
 
 import java.time.Instant
+
+type AutoScalingGroupName = AutoScalingGroupName.Type
+object AutoScalingGroupName extends NewtypeWrapped[String]
+
+type LifecycleHookName = LifecycleHookName.Type
+object LifecycleHookName extends NewtypeWrapped[String]
+
+type LifecycleTransition = LifecycleTransition.Type
+object LifecycleTransition extends NewtypeWrapped[String]
 
 sealed trait AutoScalingSnsMessage
 case class LifecycleHookNotification(service: String,
@@ -15,10 +25,10 @@ case class LifecycleHookNotification(service: String,
                                      requestId: String,
                                      lifecycleActionToken: String,
                                      accountId: AccountId,
-                                     autoScalingGroupName: String,
-                                     lifecycleHookName: String,
+                                     autoScalingGroupName: AutoScalingGroupName,
+                                     lifecycleHookName: LifecycleHookName,
                                      EC2InstanceId: Ec2InstanceId,
-                                     lifecycleTransition: String,
+                                     lifecycleTransition: LifecycleTransition,
                                      notificationMetadata: Option[String],
                                     ) extends AutoScalingSnsMessage
 case class TestNotification(accountId: AccountId,
@@ -121,4 +131,24 @@ object AdvanceLifecycleHook {
         case ContinueAutoScaling => ifContinue
       }
   }
+}
+
+enum LifecycleState(val awsName: String) {
+  case PendingWait extends LifecycleState("Pending:Wait")
+  case PendingProceed extends LifecycleState("Pending:Proceed")
+  case InService extends LifecycleState("InService")
+  case TerminatingWait extends LifecycleState("Terminating:Wait")
+  case TerminatingProceed extends LifecycleState("Terminating:Proceed")
+}
+
+object LifecycleState {
+  private val maybeFromString: PartialFunction[String, LifecycleState] = {
+    case "Pending:Wait" => PendingWait
+    case "Pending:Proceed" => PendingProceed
+    case "InService" => InService
+    case "Terminating:Wait" => TerminatingWait
+    case "Terminating:Proceed" => TerminatingProceed
+  }
+  
+  def fromString(s: String): Option[LifecycleState] = maybeFromString.lift(s)
 }

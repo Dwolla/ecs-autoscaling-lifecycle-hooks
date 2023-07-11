@@ -27,6 +27,7 @@ object ServerlessDeployPlugin extends AutoPlugin {
         baseCommand ++ Seq("--stage", Stage.parser.parsed.name),
         Option((ThisBuild / baseDirectory).value),
         "DRAINING_ARTIFACT_PATH" -> (LocalProject("autoscaling-ecs-draining-lambda") / Universal / packageBin).value.toString,
+        "REGISTRATOR_ARTIFACT_PATH" -> (LocalProject("registrator-health-check-lambda") / Universal / packageBin).value.toString,
         "VERSION" -> version.value,
         "VCS_URL" -> (ThisBuild / homepage).value.get.toString,
       ).!

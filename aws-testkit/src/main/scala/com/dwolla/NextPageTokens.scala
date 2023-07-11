@@ -1,10 +1,14 @@
 package com.dwolla
 
-object NextPageTokens {
-  def tokenForIdx(idx: Long, lastPage: Int): Option[String] =
-    if (idx == 0 || idx == lastPage) None
-    else Option(s"page-$idx")
+import monix.newtypes.NewtypeWrapped
 
-  def tokenForIdx(idx: Int, lastPage: Int): Option[String] =
+type NextPageToken = NextPageToken.Type
+object NextPageToken extends NewtypeWrapped[Option[String]]
+
+object NextPageTokens {
+  def tokenForIdx(idx: Long, lastPage: Int): NextPageToken =
+    NextPageToken(Option.unless(idx == 0 || idx == lastPage)(s"page-$idx"))
+
+  def tokenForIdx(idx: Int, lastPage: Int): NextPageToken =
     tokenForIdx(idx.toLong, lastPage)
 }
