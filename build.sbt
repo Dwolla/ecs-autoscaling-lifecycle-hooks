@@ -84,7 +84,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
       Seq(
         "org.typelevel" %% "feral-lambda" % "0.2.3",
         "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
-        "org.http4s" %% "http4s-ember-client" % "0.23.21",
+        "org.http4s" %% "http4s-ember-client" % "0.23.22",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.5.1" % Runtime,
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.20.0" % Runtime,
         "org.typelevel" %% "cats-effect-testkit" % "3.5.1" % Test,
