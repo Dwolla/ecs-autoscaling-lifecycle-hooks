@@ -63,6 +63,7 @@ class AutoScalingAlgImplSpec
   test("AutoScalingAlgImpl should pause 5 seconds and then send a message to restart the lambda, but only if the Lifecycle Action is still active") {
     forAllF { (arbSnsTopicArn: SnsTopicArn,
                notifAndResp: (LifecycleHookNotification, DescribeAutoScalingInstancesResponse),
+               guardState: LifecycleState,
               ) =>
       val (arbLifecycleHookNotification, arbDescribeAutoScalingInstancesResponse) = notifAndResp
       for {
@@ -92,7 +93,7 @@ class AutoScalingAlgImplSpec
             }
 
             AutoScalingAlg[IO](autoScalingClient, sns)
-              .pauseAndRecurse(arbSnsTopicArn, arbLifecycleHookNotification)
+              .pauseAndRecurse(arbSnsTopicArn, arbLifecycleHookNotification, guardState)
           }
         }
         _ <- control.tick
@@ -120,10 +121,10 @@ class AutoScalingAlgImplSpec
             }
             .flatten
         
-        if (arbLifecycleState.contains(PendingWait)) {
+        if (arbLifecycleState.contains(guardState)) {
           assert(finalCapturedPublishRequests.contains(arbSnsTopicArn -> arbLifecycleHookNotification.asJson.noSpaces))
         } else {
-          assert(finalCapturedPublishRequests.isEmpty, s"Input Lifecycle State was $arbLifecycleState, so we should have stopped without publishing any messages")
+          assert(finalCapturedPublishRequests.isEmpty, s"Input Lifecycle State was $arbLifecycleState, not $guardState, so we should have stopped without publishing any messages")
         }
         assert(result.isDefined)
       }

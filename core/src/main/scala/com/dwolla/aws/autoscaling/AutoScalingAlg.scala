@@ -15,7 +15,10 @@ import scala.concurrent.duration.*
 import scala.jdk.CollectionConverters.*
 
 trait AutoScalingAlg[F[_]] {
-  def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): F[Unit]
+  def pauseAndRecurse(topic: SnsTopicArn, 
+                      lifecycleHookNotification: LifecycleHookNotification,
+                      onlyIfInState: LifecycleState,
+                     ): F[Unit]
   def continueAutoScaling(l: LifecycleHookNotification): F[Unit]
 }
 
@@ -44,13 +47,16 @@ class AutoScalingAlgImpl[F[_] : Async : LoggerFactory](autoScalingClient: AutoSc
           .flatten
     }
   
-  override def pauseAndRecurse(t: SnsTopicArn, l: LifecycleHookNotification): F[Unit] = {
+  override def pauseAndRecurse(t: SnsTopicArn, 
+                               l: LifecycleHookNotification,
+                               onlyIfInState: LifecycleState,
+                              ): F[Unit] = {
     val sleepDuration = 5.seconds
 
     LoggerFactory[F].create.flatMap { implicit logger =>
       Logger[F].info(s"Sleeping for $sleepDuration, then restarting Lambda") >>
         getInstanceLifecycleState(l.EC2InstanceId)
-          .map(_.contains(PendingWait))
+          .map(_.contains(onlyIfInState))
           .ifM(
             sns.publish(t, l.asJson.noSpaces).delayBy(sleepDuration),
             Logger[F].info("Instance not in PendingWait status; refusing to republish the SNS message")

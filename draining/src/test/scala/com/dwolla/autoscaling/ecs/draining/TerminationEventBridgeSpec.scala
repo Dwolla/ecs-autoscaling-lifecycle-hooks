@@ -3,6 +3,7 @@ package com.dwolla.autoscaling.ecs.draining
 import cats.effect.*
 import com.dwolla.aws
 import com.dwolla.aws.autoscaling.*
+import com.dwolla.aws.autoscaling.LifecycleState.TerminatingWait
 import com.dwolla.aws.ec2.Ec2InstanceId
 import com.dwolla.aws.ecs.*
 import com.dwolla.aws.sns.SnsTopicArn
@@ -21,7 +22,7 @@ class TerminationEventBridgeSpec
                arbConInstId: ContainerInstanceId) =>
       for {
         deferredDrainInstanceArgs <- Deferred[IO, (ClusterArn, ContainerInstance)]
-        deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification)]
+        deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification, LifecycleState)]
         expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerInstanceStatus.Active)
 
         ecsAlg = new TestEcsAlg {
@@ -32,19 +33,23 @@ class TerminationEventBridgeSpec
         }
 
         autoScalingAlg = new TestAutoScalingAlg {
-          override def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): IO[Unit] =
-            deferredPauseAndRecurse.complete((topic, lifecycleHookNotification)).void
+          override def pauseAndRecurse(topic: SnsTopicArn,
+                                       lifecycleHookNotification: LifecycleHookNotification,
+                                       onlyIfInState: LifecycleState,
+                                      ): IO[Unit] =
+            deferredPauseAndRecurse.complete((topic, lifecycleHookNotification, onlyIfInState)).void
         }
 
         _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbSnsTopicArn, arbLifecycleHookNotification)
 
         (drainedClusterId, drainedContainerInstance) <- deferredDrainInstanceArgs.get
-        (topic, lifecycleHook) <- deferredPauseAndRecurse.get
+        (topic, lifecycleHook, guardState) <- deferredPauseAndRecurse.get
       } yield {
         assertEquals(drainedClusterId, arbClusterArn)
         assertEquals(drainedContainerInstance, ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerInstanceStatus.Active))
         assertEquals(topic, arbSnsTopicArn)
         assertEquals(lifecycleHook, arbLifecycleHookNotification)
+        assertEquals(guardState, TerminatingWait)
       }
     }
   }
@@ -55,7 +60,7 @@ class TerminationEventBridgeSpec
                arbClusterArn: ClusterArn, 
                arbConInstId: ContainerInstanceId) =>
       for {
-        deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification)]
+        deferredPauseAndRecurse <- Deferred[IO, (SnsTopicArn, LifecycleHookNotification, LifecycleState)]
         expectedContainerInstance = ContainerInstance(arbConInstId, arbLifecycleHookNotification.EC2InstanceId, 1.asInstanceOf[TaskCount], ContainerInstanceStatus.Draining)
 
         ecsAlg = new TestEcsAlg {
@@ -64,16 +69,20 @@ class TerminationEventBridgeSpec
         }
 
         autoScalingAlg = new TestAutoScalingAlg {
-          override def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): IO[Unit] =
-            deferredPauseAndRecurse.complete((topic, lifecycleHookNotification)).void
+          override def pauseAndRecurse(topic: SnsTopicArn,
+                                       lifecycleHookNotification: LifecycleHookNotification,
+                                       onlyIfInState: LifecycleState,
+                                      ): IO[Unit] =
+            deferredPauseAndRecurse.complete((topic, lifecycleHookNotification, onlyIfInState)).void
         }
 
         _ <- new TerminationEventBridge(ecsAlg, autoScalingAlg).apply(arbSnsTopicArn, arbLifecycleHookNotification)
 
-        (topic, lifecycleHook) <- deferredPauseAndRecurse.get
+        (topic, lifecycleHook, guardState) <- deferredPauseAndRecurse.get
       } yield {
         assertEquals(topic, arbSnsTopicArn)
         assertEquals(lifecycleHook, arbLifecycleHookNotification)
+        assertEquals(guardState, TerminatingWait)
       }
     }
   }

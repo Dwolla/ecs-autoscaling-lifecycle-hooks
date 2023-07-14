@@ -3,6 +3,7 @@ package com.dwolla.autoscaling.ecs.draining
 import cats.*
 import cats.syntax.all.*
 import com.dwolla.aws.autoscaling.*
+import com.dwolla.aws.autoscaling.LifecycleState.TerminatingWait
 import com.dwolla.aws.ecs.*
 import com.dwolla.aws.sns.SnsTopicArn
 
@@ -15,7 +16,7 @@ class TerminationEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G], AutoScaling:
           ECS.drainInstance(cluster, ci).as(ci.runningTaskCount > TaskCount(0))
         case None => false.pure[F]
       }
-      _ <- if (tasksRemaining) AutoScaling.pauseAndRecurse(topic, lifecycleHook) else AutoScaling.continueAutoScaling(lifecycleHook)
+      _ <- if (tasksRemaining) AutoScaling.pauseAndRecurse(topic, lifecycleHook, TerminatingWait) else AutoScaling.continueAutoScaling(lifecycleHook)
     } yield ()
 }
 

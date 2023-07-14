@@ -5,6 +5,7 @@ import cats.syntax.all.*
 import com.dwolla.aws.*
 import com.dwolla.aws.autoscaling.*
 import com.dwolla.aws.autoscaling.AdvanceLifecycleHook.*
+import com.dwolla.aws.autoscaling.LifecycleState.*
 import com.dwolla.aws.cloudformation.*
 import com.dwolla.aws.ec2.Ec2Alg
 import com.dwolla.aws.ecs.EcsAlg
@@ -38,7 +39,7 @@ class ScaleOutPendingEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G],
       }
       .getOrElse(PauseAndRecurse) // EC2 instance doesn't exist in ECS cluster yet, so pause and try again later
       .flatMap {
-        case PauseAndRecurse => AutoScaling.pauseAndRecurse(topic, lifecycleHook)
+        case PauseAndRecurse => AutoScaling.pauseAndRecurse(topic, lifecycleHook, PendingWait)
         case ContinueAutoScaling => AutoScaling.continueAutoScaling(lifecycleHook)
       }
 }

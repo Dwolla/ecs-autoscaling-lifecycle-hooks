@@ -6,6 +6,7 @@ import cats.syntax.all.*
 import com.dwolla.aws.*
 import com.dwolla.aws.autoscaling.*
 import com.dwolla.aws.autoscaling.AdvanceLifecycleHook.*
+import com.dwolla.aws.autoscaling.LifecycleState.PendingWait
 import com.dwolla.aws.cloudformation.*
 import com.dwolla.aws.ec2.*
 import com.dwolla.aws.ecs.*
@@ -29,7 +30,7 @@ class ScaleOutPendingEventBridgeSpec
                arbRegistratorStatus: Boolean,
               ) =>
       for {
-        deferredResult <- Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification)]
+        deferredResult <- Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification, Option[LifecycleState])]
         ecs = new TestEcsAlg {
           override def findEc2Instance(ec2InstanceId: Ec2InstanceId): IO[Option[(ClusterArn, ContainerInstance)]] =
             Option.when(ec2InstanceId == arbLifecycleHook.EC2InstanceId) {
@@ -56,12 +57,13 @@ class ScaleOutPendingEventBridgeSpec
 
         _ <- new ScaleOutPendingEventBridge(ecs, autoscaling, ec2, cloudformation).apply(arbTopic, arbLifecycleHook)
 
-        (result, maybeTopic, capturedLifecycleHookNotification) <- deferredResult.get
+        (result, maybeTopic, capturedLifecycleHookNotification, maybeGuardState) <- deferredResult.get
 
       } yield {
         assertEquals(result, if (arbRegistratorStatus) ContinueAutoScaling else PauseAndRecurse)
         assertEquals(maybeTopic, Option.unless(arbRegistratorStatus)(arbTopic))
         assertEquals(capturedLifecycleHookNotification, arbLifecycleHook)
+        assertEquals(maybeGuardState, Option.unless(arbRegistratorStatus)(PendingWait))
       }
     }
   }
@@ -76,7 +78,7 @@ class ScaleOutPendingEventBridgeSpec
                arbTags: List[Tag],
               ) =>
       for {
-        deferredResult <- Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification)]
+        deferredResult <- Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification, Option[LifecycleState])]
         ecs = new TestEcsAlg {
           override def findEc2Instance(ec2InstanceId: Ec2InstanceId): IO[Option[(ClusterArn, ContainerInstance)]] =
             none[(ClusterArn, ContainerInstance)].pure[IO]
@@ -86,12 +88,13 @@ class ScaleOutPendingEventBridgeSpec
         cloudformation = new TestCloudFormationAlg {}
         _ <- new ScaleOutPendingEventBridge(ecs, autoscaling, ec2, cloudformation).apply(arbTopic, arbLifecycleHook)
 
-        (result, maybeTopic, capturedLifecycleHookNotification) <- deferredResult.get
+        (result, maybeTopic, capturedLifecycleHookNotification, maybeGuardState) <- deferredResult.get
 
       } yield {
         assertEquals(result, PauseAndRecurse)
         assertEquals(maybeTopic, arbTopic.some)
         assertEquals(capturedLifecycleHookNotification, arbLifecycleHook)
+        assertEquals(maybeGuardState, PendingWait.some)
       }
     }
   }
@@ -110,10 +113,13 @@ class FakeEc2AlgThatReturnsArbitraryTagsWithCloudFormationStackIdTag(arbLifecycl
     }
 }
 
-class FakeAutoScalingAlgThatCapturesMethodParameters(deferredResult: Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification)]) extends TestAutoScalingAlg {
-  override def pauseAndRecurse(topic: SnsTopicArn, lifecycleHookNotification: LifecycleHookNotification): IO[Unit] =
-    deferredResult.complete((PauseAndRecurse, topic.some, lifecycleHookNotification)).void
+class FakeAutoScalingAlgThatCapturesMethodParameters(deferredResult: Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification, Option[LifecycleState])]) extends TestAutoScalingAlg {
+  override def pauseAndRecurse(topic: SnsTopicArn, 
+                               lifecycleHookNotification: LifecycleHookNotification,
+                               onlyIfInState: LifecycleState,
+                              ): IO[Unit] =
+    deferredResult.complete((PauseAndRecurse, topic.some, lifecycleHookNotification, onlyIfInState.some)).void
 
   override def continueAutoScaling(l: LifecycleHookNotification): IO[Unit] =
-    deferredResult.complete((ContinueAutoScaling, None, l)).void
+    deferredResult.complete((ContinueAutoScaling, None, l, None)).void
 }
