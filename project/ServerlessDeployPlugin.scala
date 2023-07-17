@@ -1,3 +1,4 @@
+import com.github.sbt.git.SbtGit.git
 import com.typesafe.sbt.packager.universal.UniversalPlugin
 import com.typesafe.sbt.packager.universal.UniversalPlugin.autoImport.*
 import sbt.Keys.*
@@ -8,7 +9,7 @@ import sbt.{Def, settingKey, IO as _, *}
 object ServerlessDeployPlugin extends AutoPlugin {
   object autoImport {
     val serverlessDeployCommand = settingKey[Seq[String]]("serverless command to deploy the application")
-    val deploy = inputKey[Int]("deploy to AWS")
+    val deploy = inputKey[DeployOutcome]("deploy to AWS")
   }
 
   import autoImport.*
@@ -23,17 +24,19 @@ object ServerlessDeployPlugin extends AutoPlugin {
       import scala.sys.process.*
 
       val baseCommand = serverlessDeployCommand.value
-      val exitCode = Process(
+      val deployProcess = Process(
         baseCommand ++ Seq("--stage", Stage.parser.parsed.name),
         Option((ThisBuild / baseDirectory).value),
         "DRAINING_ARTIFACT_PATH" -> (LocalProject("autoscaling-ecs-draining-lambda") / Universal / packageBin).value.toString,
         "REGISTRATOR_ARTIFACT_PATH" -> (LocalProject("registrator-health-check-lambda") / Universal / packageBin).value.toString,
         "VERSION" -> version.value,
         "VCS_URL" -> (ThisBuild / homepage).value.get.toString,
-      ).!
+      )
 
-      if (exitCode == 0) exitCode
-      else throw new IllegalStateException("Serverless returned a non-zero exit code. Please check the logs for more information.")
+      if (taggedVersion.value.exists(_.toString == version.value)) {
+        if (deployProcess.! == 0) Success
+        else throw new IllegalStateException("Serverless returned a non-zero exit code. Please check the logs for more information.")
+      } else SkippedBecauseVersionIsNotLatestTag
     }.evaluated
   )
 
@@ -49,4 +52,12 @@ object ServerlessDeployPlugin extends AutoPlugin {
     case object Admin extends Stage("admin")
     case object Sandbox extends Stage("sandbox")
   }
+
+  private def taggedVersion: Def.Initialize[Option[Version]] = Def.setting {
+    git.gitCurrentTags.value.collect { case Version.Tag(v) => v }.sorted.lastOption
+  }
+
+  sealed trait DeployOutcome // no failed outcome because we just throw an exception in that case
+  case object Success extends DeployOutcome
+  case object SkippedBecauseVersionIsNotLatestTag extends DeployOutcome
 }
