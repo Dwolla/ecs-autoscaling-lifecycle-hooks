@@ -37,7 +37,7 @@ lazy val `autoscaling-ecs-core`: Project = project
         "com.dwolla" %% "fs2-utils" % "3.0.0-RC2",
         "org.typelevel" %% "feral-lambda" % "0.2.3",
         "org.typelevel" %% "log4cats-core" % "2.6.0",
-        "io.circe" %% "circe-parser" % "0.14.5",
+        "io.circe" %% "circe-parser" % "0.14.6",
         "io.monix" %% "newtypes-core" % "0.2.3",
         "io.monix" %% "newtypes-circe-v0-14" % "0.2.3",
 
@@ -64,8 +64,8 @@ lazy val `core-tests` = project
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
         "org.typelevel" %% "log4cats-noop" % "2.6.0" % Test,
         "org.typelevel" %% "mouse" % "1.2.1" % Test,
-        "io.circe" %% "circe-literal" % "0.14.5" % Test,
-        "io.circe" %% "circe-testing" % "0.14.5" % Test,
+        "io.circe" %% "circe-literal" % "0.14.6" % Test,
+        "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "com.47deg" %% "scalacheck-toolbox-datetime" % "0.7.0" % Test exclude("joda-time", "joda-time"),
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
       )
@@ -92,8 +92,8 @@ lazy val `autoscaling-ecs-draining-lambda` = project
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M8" % Test,
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
         "org.typelevel" %% "log4cats-noop" % "2.6.0" % Test,
-        "io.circe" %% "circe-literal" % "0.14.5" % Test,
-        "io.circe" %% "circe-testing" % "0.14.5" % Test,
+        "io.circe" %% "circe-literal" % "0.14.6" % Test,
+        "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
       )
     },
@@ -126,8 +126,8 @@ lazy val `registrator-health-check-lambda` = project
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M8" % Test,
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
         "org.typelevel" %% "log4cats-noop" % "2.6.0" % Test,
-        "io.circe" %% "circe-literal" % "0.14.5" % Test,
-        "io.circe" %% "circe-testing" % "0.14.5" % Test,
+        "io.circe" %% "circe-literal" % "0.14.6" % Test,
+        "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
       )
     },
@@ -151,7 +151,7 @@ lazy val `feral-testkit` = project
       Seq(
         "org.typelevel" %% "feral-lambda" % "0.2.3",
         "org.scalacheck" %% "scalacheck" % "1.17.0",
-        "io.circe" %% "circe-testing" % "0.14.5",
+        "io.circe" %% "circe-testing" % "0.14.6",
       )
     },
   )
