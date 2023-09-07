@@ -2,12 +2,13 @@ package com.dwolla.aws.ecs
 
 import cats.*
 import cats.syntax.all.*
-import com.amazonaws.ecs.{ECS, Task}
+import com.amazonaws.ecs.ECS
 import com.dwolla.aws.ec2.*
 import com.dwolla.aws.ecs.*
 import com.dwolla.aws.ecs.TaskStatus.Running
 import com.dwolla.fs2utils.Pagination
 import fs2.*
+import monix.newtypes.HasExtractor
 import org.typelevel.log4cats.{Logger, LoggerFactory}
 
 abstract class EcsAlg[F[_] : Applicative, G[_]] {
@@ -42,19 +43,28 @@ object EcsAlg {
         ecs
           .listContainerInstances(cluster.value.some, nextToken = nextToken)
           .map { resp =>
-            resp.containerInstanceArns.map(Chunk.iterable(_)).getOrElse(Chunk.empty) -> resp.nextToken
+            resp.containerInstanceArns.toChunk.map(ContainerInstanceId(_)) -> resp.nextToken
           }
       }
-        .chunkN(100)
-        .map(_.toList)
-        .evalMap(ecs.describeContainerInstances(_, cluster = cluster.value.some))
-        .map(_.containerInstances.map(Chunk.iterable(_)).getOrElse(Chunk.empty))
-        .unchunks
+        .through(chunkedEcsRequest(ecs.describeContainerInstances(_, cluster = cluster.value.some))(_.containerInstances))
         .map { ci =>
           (ci.containerInstanceArn.map(ContainerInstanceId(_)), ci.ec2InstanceId.map(Ec2InstanceId(_)), ci.status.flatMap(ContainerInstanceStatus.fromStatus))
             .mapN(ContainerInstance(_, _, TaskCount(ci.runningTasksCount), _))
         }
         .unNone
+
+    /**
+     * Many ECS Describe* APIs accept up to 100 identifiers to be described in a single request.
+     * This helper function generically chunks the requests accordingly.
+     */
+    private def chunkedEcsRequest[A, B, C, AA](f: List[A] => F[B])
+                                              (extract: B => Option[List[C]])
+                                              (using HasExtractor.Aux[AA, A]): Pipe[F, AA, C] =
+      _.chunkN(100)
+        .map(_.toList)
+        .evalMap(f.compose(_.map(implicitly[HasExtractor.Aux[AA, A]].extract)))
+        .map(extract(_).toChunk)
+        .unchunks
 
     override def findEc2Instance(ec2InstanceId: Ec2InstanceId): F[Option[(ClusterArn, ContainerInstance)]] =
       LoggerFactory[F].create.flatMap { case given Logger[F] =>
@@ -85,21 +95,13 @@ object EcsAlg {
         }
       } yield TaskArn(taskArn)
 
-    private def describeTasks(cluster: ClusterArn): Pipe[F, TaskArn, Task] =
-      _.map(_.value)
-        .chunkN(100)
-        .map(_.toList)
-        .evalMap(ecs.describeTasks(_, cluster.value.some))
-        .map(_.tasks.map(Chunk.iterable(_)).getOrElse(Chunk.empty))
-        .unchunks
-
     override def isTaskDefinitionRunningOnInstance(cluster: ClusterArn,
                                                    ci: ContainerInstance,
                                                    taskDefinition: TaskDefinitionArn): F[Boolean] =
       LoggerFactory[F].create.flatMap { case given Logger[F] =>
         Logger[F].info(s"looking for task definition ${taskDefinition.value} on instance ${ci.containerInstanceId.value} in cluster ${cluster.value}") >>
           listTasks(cluster, ci)
-            .through(describeTasks(cluster))
+            .through(chunkedEcsRequest(ecs.describeTasks(_, cluster.value.some))(_.tasks))
             .filter(_.taskDefinitionArn.map(TaskDefinitionArn(_)).contains(taskDefinition))
             .filter(_.lastStatus.flatMap(TaskStatus.fromString).contains(Running))
             .head
@@ -114,5 +116,10 @@ object EcsAlg {
           ecs.updateContainerInstancesState(List(ci.containerInstanceId.value), com.amazonaws.ecs.ContainerInstanceStatus.DRAINING, cluster.value.some)
             .void
       }
+  }
+
+  extension[A] (maybeList: Option[List[A]]) {
+    def toChunk: Chunk[A] =
+      maybeList.fold(Chunk.empty)(Chunk.iterable)
   }
 }
