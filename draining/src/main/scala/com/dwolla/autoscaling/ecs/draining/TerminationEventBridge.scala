@@ -13,7 +13,7 @@ class TerminationEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G], AutoScaling:
       maybeInstance <- ECS.findEc2Instance(lifecycleHook.EC2InstanceId)
       tasksRemaining <- maybeInstance match {
         case Some((cluster, ci)) =>
-          ECS.drainInstance(cluster, ci).as(ci.runningTaskCount > TaskCount(0))
+          ECS.drainInstance(cluster, ci).as(ci.countOfTasksNotStopped > TaskCount(0))
         case None => false.pure[F]
       }
       _ <- if (tasksRemaining) AutoScaling.pauseAndRecurse(topic, lifecycleHook, TerminatingWait) else AutoScaling.continueAutoScaling(lifecycleHook)

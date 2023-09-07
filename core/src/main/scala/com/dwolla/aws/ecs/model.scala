@@ -9,12 +9,14 @@ import com.dwolla.aws.ec2.Ec2InstanceId
 type ContainerInstanceId = ContainerInstanceId.Type
 object ContainerInstanceId extends NewtypeWrapped[String]
 type ClusterArn = ClusterArn.Type
-object ClusterArn extends NewtypeWrapped[String]
+object ClusterArn extends NewtypeWrapped[String] {
+  def unapply(arg: Cluster): Some[ClusterArn] = Some(arg.clusterArn)
+}
 type ClusterName = ClusterName.Type
 object ClusterName extends NewtypeWrapped[String]
 type TaskCount = TaskCount.Type
-object TaskCount extends NewtypeWrapped[Int] {
-  given Order[TaskCount] = Order[Int].contramap(_.value)
+object TaskCount extends NewtypeWrapped[Long] {
+  given Order[TaskCount] = Order[Long].contramap(_.value)
 }
 type Region = Region.Type
 object Region extends NewtypeWrapped[String]
@@ -25,7 +27,7 @@ case class Cluster(region: Region, accountId: AccountId, name: ClusterName) {
 
 case class ContainerInstance(containerInstanceId: ContainerInstanceId,
                              ec2InstanceId: Ec2InstanceId,
-                             runningTaskCount: TaskCount,
+                             countOfTasksNotStopped: TaskCount,
                              status: ContainerInstanceStatus,
                             )
 
@@ -57,21 +59,40 @@ type TaskDefinitionArn = TaskDefinitionArn.Type
 object TaskDefinitionArn extends NewtypeWrapped[String]
 
 enum TaskStatus {
+  case Provisioning
   case Pending
+  case Activating
   case Running
+  case Deactivating
+  case Stopping
+  case Deprovisioning
   case Stopped
+  case Deleted
 
   override def toString: String = this match {
-    case Pending => "PENDING"
-    case Running => "RUNNING"
-    case Stopped => "STOPPED"
+    case Provisioning => "PROVISIONING" 
+    case Pending => "PENDING" 
+    case Activating => "ACTIVATING" 
+    case Running => "RUNNING" 
+    case Deactivating => "DEACTIVATING" 
+    case Stopping => "STOPPING" 
+    case Deprovisioning => "DEPROVISIONING" 
+    case Stopped => "STOPPED" 
+    case Deleted => "DELETED"   
   }
 }
 object TaskStatus {
-  def fromString(s: String): Option[TaskStatus] =
-    s match {
-      case "PENDING" => TaskStatus.Pending.some
-      case "RUNNING" => TaskStatus.Running.some
-      case "STOPPED" => TaskStatus.Stopped.some
-    }
+  val stoppedTaskStatuses: Set[TaskStatus] = Set(Stopped, Deleted)
+
+  def fromString: PartialFunction[String, TaskStatus] = {
+    case "PROVISIONING" => Provisioning
+    case "PENDING" => Pending
+    case "ACTIVATING" => Activating
+    case "RUNNING" => Running
+    case "DEACTIVATING" => Deactivating
+    case "STOPPING" => Stopping
+    case "DEPROVISIONING" => Deprovisioning
+    case "STOPPED" => Stopped
+    case "DELETED" => Deleted
+  }
 }

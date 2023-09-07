@@ -5,26 +5,26 @@ import cats.data.*
 import cats.effect.*
 import cats.syntax.all.*
 import com.amazonaws.ecs.ContainerInstanceStatus.DRAINING
-import com.amazonaws.ecs.{BoxedInteger, ContainerInstanceField, DescribeContainerInstancesResponse, DescribeTasksResponse, DesiredStatus, ECS, LaunchType, ListClustersResponse, ListContainerInstancesResponse, ListTasksResponse, Task, TaskField, UpdateContainerInstancesStateResponse, ContainerInstance as AwsContainerInstance}
-import com.dwolla.aws.ecs.{*, given}
+import com.amazonaws.ecs.{BoxedInteger, ContainerInstanceField, DescribeContainerInstancesResponse, DescribeTasksResponse, DesiredStatus, ECS, Failure, LaunchType, ListClustersResponse, ListContainerInstancesResponse, ListTasksResponse, Task, TaskField, UpdateContainerInstancesStateResponse, ContainerInstance as AwsContainerInstance}
+import com.dwolla.*
+import com.dwolla.aws.ArbitraryPagination
+import com.dwolla.aws.ecs.*
 import fs2.{Chunk, Stream}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
-import com.dwolla.*
-import com.dwolla.aws.ArbitraryPagination
 
 import scala.annotation.nowarn
 
-@nowarn("""msg=pattern selector should be an instance of Matchable[,]+\s+but it has unmatchable type EcsAlgSpec\.this\.ClusterWithInstances(?:\.Type)? instead""")
+@nowarn("""msg=pattern selector should be an instance of Matchable[,]+\s+but it has unmatchable type com\.dwolla\.aws\.ecs\.(?:ClusterWithInstances(?:\.Type)?)|TaskArn instead""")
 class EcsAlgSpec
   extends CatsEffectSuite
     with ScalaCheckEffectSuite {
 
   given [F[_] : Applicative]: LoggerFactory[F] = NoOpFactory[F]
 
-  def fakeECS[F[_] : ApplicativeThrow](arbCluster: ArbitraryCluster): ECS[F] = new FakeECS[F] {
+  def fakeECS[F[_] : MonadThrow](arbCluster: ArbitraryCluster): ECS[F] = new FakeECS[F] {
     private lazy val listClustersResponses: Map[NextPageToken, ListClustersResponse] =
       ArbitraryPagination.paginateWith[Chunk, ArbitraryCluster, ClusterWithInstances, ClusterArn](arbCluster) {
           case ClusterWithInstances((c, _)) => c.clusterArn
@@ -52,39 +52,84 @@ class EcsAlgSpec
         }
         .toMap
 
-    private def ciToCi(ci: ContainerInstance): AwsContainerInstance =
-      AwsContainerInstance(
-        containerInstanceArn = ci.containerInstanceId.value.some,
-        ec2InstanceId = ci.ec2InstanceId.value.some,
-        runningTasksCount = ci.runningTaskCount.value,
-        status = ci.status.toString.some,
-      )
-
-    private lazy val clusterMap: Map[ClusterArn, List[ContainerInstance]] = Foldable[List].fold {
+    private lazy val listTasksResponses: Map[(Option[ClusterArn], Option[ContainerInstanceId]), Map[NextPageToken, ListTasksResponse]] =
       arbCluster
         .value
         .flatMap(_.toList)
         .flatMap {
-          case ClusterWithInstances((c, cis)) =>
-            cis
+          case ClusterWithInstances((ClusterArn(clusterArn), ciPages)) =>
+            ciPages
               .flatMap(_.toList)
-              .map(ci => Map(c.clusterArn -> List(ci)))
-        }
-    }
+              .map {
+                case ContainerInstanceWithTaskPages(cid, _, taskPages, _) =>
+                  val key: (Option[ClusterArn], Option[ContainerInstanceId]) = (clusterArn.some, cid.some)
+                  val value: Map[NextPageToken, ListTasksResponse] = ArbitraryPagination.paginate(taskPages).view.mapValues {
+                    case (chunk, npt) =>
+                      ListTasksResponse(chunk.toList.map(_._1.value).some, npt.value)
+                  }.toMap
 
-    override def listClusters(nextToken: Option[String], maxResults: Option[BoxedInteger]): F[ListClustersResponse] =
-      listClustersResponses(NextPageToken(nextToken)).pure[F]
+                  key -> value
+              }
+        }
+        .toMap
+
+    private lazy val describeTasksResponses: Map[Option[ClusterArn], List[TaskArnAndStatus]] =
+      arbCluster
+        .value
+        .flatMap(_.toList)
+        .map(_.value)
+        .toMap
+        .map { case (cluster: Cluster, ciPages: List[Chunk[ContainerInstanceWithTaskPages]]) =>
+          val k: Option[ClusterArn] = cluster.clusterArn.some
+          val v: List[TaskArnAndStatus] = ciPages
+            .flatMap(_.toList)
+            .flatMap(_.tasks)
+            .flatMap(_.toList)
+
+          k -> v
+        }
+
+    private def ciToCi(ci: ContainerInstance): AwsContainerInstance =
+      AwsContainerInstance(
+        containerInstanceArn = ci.containerInstanceId.value.some,
+        ec2InstanceId = ci.ec2InstanceId.value.some,
+        runningTasksCount = ci.countOfTasksNotStopped.value.intValue,
+        status = ci.status.toString.some,
+      )
+
+    private lazy val clusterMap: Map[ClusterArn, List[ContainerInstance]] =
+      Foldable[List].fold {
+        arbCluster
+          .value
+          .flatMap(_.toList)
+          .flatMap {
+            case ClusterWithInstances((c, cis)) =>
+              cis
+                .flatMap(_.toList)
+                .map(ci => Map(c.clusterArn -> List(ci.toContainerInstance)))
+          }
+      }
+
+    override def listClusters(nextToken: Option[String],
+                              maxResults: Option[BoxedInteger]): F[ListClustersResponse] =
+      rejectParameters("listCluster")(maxResults.as("maxResults"))
+        .as(listClustersResponses(NextPageToken(nextToken)))
 
     override def listContainerInstances(cluster: Option[String],
                                         filter: Option[String],
                                         nextToken: Option[String],
                                         maxResults: Option[BoxedInteger],
                                         status: Option[com.amazonaws.ecs.ContainerInstanceStatus]): F[ListContainerInstancesResponse] =
-      listContainerInstancesResponses
-        .get(cluster.map(ClusterArn(_)))
-        .flatMap(_.get(NextPageToken(nextToken)))
-        .getOrElse(ListContainerInstancesResponse())
-        .pure[F]
+      rejectParameters("listContainerInstances")(
+        filter.as("filter"),
+        maxResults.as("maxResults"),
+        status.as("status"),
+      ).as {
+        listContainerInstancesResponses
+          .get(cluster.map(ClusterArn(_)))
+          .flatMap(_.get(NextPageToken(nextToken)))
+          .getOrElse(ListContainerInstancesResponse())
+      }
 
     override def describeContainerInstances(containerInstances: List[String],
                                             cluster: Option[String],
@@ -95,6 +140,59 @@ class EcsAlgSpec
 
       DescribeContainerInstancesResponse(containerInstances = cis.map(ciToCi).some).pure[F]
     }
+
+    private def rejectParameters(method: String)
+                                (options: Option[String]*): F[Unit] =
+      options
+        .traverse(_.toInvalidNel(()))
+        .leftMap(s => new RuntimeException(s"$method called with unimplemented parameters ${s.mkString_(", ")}"))
+        .liftTo[F]
+        .void
+
+    override def listTasks(cluster: Option[String],
+                           containerInstance: Option[String],
+                           family: Option[String],
+                           nextToken: Option[String],
+                           maxResults: Option[BoxedInteger],
+                           startedBy: Option[String],
+                           serviceName: Option[String],
+                           desiredStatus: Option[DesiredStatus],
+                           launchType: Option[LaunchType]): F[ListTasksResponse] =
+      rejectParameters("listTasks")(
+        family.as("family"),
+        maxResults.as("maxResults"),
+        startedBy.as("startedBy"),
+        serviceName.as("serviceName"),
+        desiredStatus.as("desiredStatus"),
+        launchType.as("launchType"),
+      ).as {
+        listTasksResponses.get((cluster.map(ClusterArn(_)), containerInstance.map(ContainerInstanceId(_))))
+          .flatMap(_.get(NextPageToken(nextToken)))
+          .getOrElse(ListTasksResponse())
+      }
+
+    override def describeTasks(tasks: List[String],
+                               cluster: Option[String],
+                               include: Option[List[TaskField]]): F[DescribeTasksResponse] =
+      rejectParameters("describeTasks")(include.as("maxResults"))
+        .as {
+          val tasksSet = tasks.toSet
+          val maybeTasks =
+            describeTasksResponses
+              .get(cluster.map(ClusterArn(_)))
+              .map {
+                _.collect {
+                  case v@TaskArnAndStatus(TaskArn(arn), status) if tasksSet.contains(arn) =>
+                    Task(taskArn = arn.some, lastStatus = status.toString.some)
+                }
+              }
+
+          val failures = (tasks.toSet -- maybeTasks.toList.flatten.flatMap(_.taskArn)).toList.map { arn =>
+            Failure(arn.some, "ARN not present in cluster".some)
+          }
+
+          DescribeTasksResponse(maybeTasks, failures.some)
+        }
   }
 
   test("EcsAlg should return all the cluster ARNs") {
@@ -122,7 +220,7 @@ class EcsAlgSpec
             .listContainerInstances(expectedCluster.clusterArn)
             .compile
             .toList
-            .tupleRight(expectedContainerInstanceChunks.flatMap(_.toList))
+            .tupleRight(expectedContainerInstanceChunks.flatMap(_.toList.map(_.toContainerInstance)))
         }
         .map { case (obtained, expected) =>
           assertEquals(obtained, expected)
@@ -136,7 +234,7 @@ class EcsAlgSpec
     forAllF { (arbCluster: ArbitraryCluster) =>
       val testClass = EcsAlg[IO](fakeECS(arbCluster))
       val (expectedCluster, expectedCI) = arbCluster.value.flatMap(_.toList).find(_.pages.flatMap(_.toList).nonEmpty).flatMap {
-        case ClusterWithInstances((c, cis)) => cis.flatMap(_.toList).lastOption.map(c -> _)
+        case ClusterWithInstances((c, cis)) => cis.flatMap(_.toList.map(_.toContainerInstance)).lastOption.map(c -> _)
       }.getOrElse(throw new RuntimeException("test setup exception; no container instances were found in the arbitrary cluster"))
 
       OptionT(testClass.findEc2Instance(expectedCI.ec2InstanceId))
@@ -213,16 +311,15 @@ class EcsAlgSpec
                                serviceName: Option[String],
                                desiredStatus: Option[DesiredStatus],
                                launchType: Option[LaunchType]): IO[ListTasksResponse] = IO.pure {
-          if (cluster.contains(arbCluster.value) && containerInstance.contains(arbCi.containerInstanceId.value) && family.isEmpty) {
+          if (cluster.contains(arbCluster.value) && containerInstance.contains(arbCi.containerInstanceId.value) && family.isEmpty)
             ListTasksResponse.apply.tupled {
               taskPages.get(NextPageToken(nextToken))
                 .separate
                 .map(_.flatMap(_.value))
                 .leftMap(_.map(_.map(_.value)))
             }
-          } else {
+          else
             ListTasksResponse(None, None)
-          }
         }
 
         override def describeTasks(tasks: List[String],
@@ -246,7 +343,7 @@ class EcsAlgSpec
       for {
         output <- alg.isTaskDefinitionRunningOnInstance(arbCluster, arbCi, arbTaskDefinition)
       } yield {
-        assertEquals(output, arbTaskStatus.map(_._2).contains(TaskStatus.Running)) // TODO figure out why this compiled without the .map(_._2) part before
+        assertEquals(output, arbTaskStatus.map(_._2).contains(TaskStatus.Running))
       }
     }
   }

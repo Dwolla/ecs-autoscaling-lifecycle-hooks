@@ -5,7 +5,7 @@ import cats.syntax.all.*
 import com.amazonaws.ecs.ECS
 import com.dwolla.aws.ec2.*
 import com.dwolla.aws.ecs.*
-import com.dwolla.aws.ecs.TaskStatus.Running
+import com.dwolla.aws.ecs.TaskStatus.{Running, stoppedTaskStatuses}
 import com.dwolla.fs2utils.Pagination
 import fs2.*
 import monix.newtypes.HasExtractor
@@ -40,18 +40,30 @@ object EcsAlg {
 
     override def listContainerInstances(cluster: ClusterArn): Stream[F, ContainerInstance] =
       Pagination.offsetUnfoldChunkEval { (nextToken: Option[String]) =>
-        ecs
-          .listContainerInstances(cluster.value.some, nextToken = nextToken)
-          .map { resp =>
-            resp.containerInstanceArns.toChunk.map(ContainerInstanceId(_)) -> resp.nextToken
-          }
-      }
+          ecs
+            .listContainerInstances(cluster.value.some, nextToken = nextToken)
+            .map { resp =>
+              resp.containerInstanceArns.toChunk.map(ContainerInstanceId(_)) -> resp.nextToken
+            }
+        }
         .through(chunkedEcsRequest(ecs.describeContainerInstances(_, cluster = cluster.value.some))(_.containerInstances))
         .map { ci =>
-          (ci.containerInstanceArn.map(ContainerInstanceId(_)), ci.ec2InstanceId.map(Ec2InstanceId(_)), ci.status.flatMap(ContainerInstanceStatus.fromStatus))
-            .mapN(ContainerInstance(_, _, TaskCount(ci.runningTasksCount), _))
+          (ci.containerInstanceArn.map(ContainerInstanceId(_)),
+            ci.ec2InstanceId.map(Ec2InstanceId(_)),
+            ci.status.flatMap(ContainerInstanceStatus.fromStatus),
+          )
+            .tupled
         }
         .unNone
+        .evalMap { (ci, ec2, status) =>
+          listTasks(cluster, ci)
+            .through(chunkedEcsRequest(ecs.describeTasks(_, cluster.value.some))(_.tasks))
+            .filterNot(_.lastStatus.flatMap(TaskStatus.fromString.lift).exists(stoppedTaskStatuses.contains))
+            .compile
+            .count
+            .map(TaskCount(_))
+            .map(ContainerInstance(ci, ec2, _, status))
+        }
 
     /**
      * Many ECS Describe* APIs accept up to 100 identifiers to be described in a single request.
@@ -79,16 +91,16 @@ object EcsAlg {
       }
 
     private def listTasks(cluster: ClusterArn,
-                          ci: ContainerInstance): Stream[F, TaskArn] =
+                          ci: ContainerInstanceId): Stream[F, TaskArn] =
       for {
         given _ <- Stream.eval(LoggerFactory[F].create)
-        _ <- Stream.eval(Logger[F].info(s"listing tasks on instance ${ci.containerInstanceId.value} in cluster $cluster"))
+        _ <- Stream.eval(Logger[F].info(s"listing tasks on instance ${ci.value} in cluster $cluster"))
         taskArn <- Pagination.offsetUnfoldChunkEval { (nextToken: Option[String]) =>
           for {
-            _ <- Logger[F].trace(s"cluster = ${cluster.value}, containerInstance = ${ci.containerInstanceId.value}, nextToken = $nextToken")
+            _ <- Logger[F].trace(s"cluster = ${cluster.value}, containerInstance = ${ci.value}, nextToken = $nextToken")
             resp <- ecs.listTasks(
               cluster = cluster.value.some,
-              containerInstance = ci.containerInstanceId.value.some,
+              containerInstance = ci.value.some,
               nextToken = nextToken,
             )
           } yield resp.taskArns.map(Chunk.iterable(_)).getOrElse(Chunk.empty) -> resp.nextToken
@@ -100,10 +112,10 @@ object EcsAlg {
                                                    taskDefinition: TaskDefinitionArn): F[Boolean] =
       LoggerFactory[F].create.flatMap { case given Logger[F] =>
         Logger[F].info(s"looking for task definition ${taskDefinition.value} on instance ${ci.containerInstanceId.value} in cluster ${cluster.value}") >>
-          listTasks(cluster, ci)
+          listTasks(cluster, ci.containerInstanceId)
             .through(chunkedEcsRequest(ecs.describeTasks(_, cluster.value.some))(_.tasks))
             .filter(_.taskDefinitionArn.map(TaskDefinitionArn(_)).contains(taskDefinition))
-            .filter(_.lastStatus.flatMap(TaskStatus.fromString).contains(Running))
+            .filter(_.lastStatus.flatMap(TaskStatus.fromString.lift).contains(Running))
             .head
             .compile
             .last
