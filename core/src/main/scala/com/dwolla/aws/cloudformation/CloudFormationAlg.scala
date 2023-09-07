@@ -24,7 +24,7 @@ trait CloudFormationAlg[F[_]] {
 object CloudFormationAlg {
   def apply[F[_] : Async : LoggerFactory](client: CloudFormationAsyncClient): CloudFormationAlg[F] = new CloudFormationAlg[F] {
     override def physicalResourceIdFor(stack: StackArn, logicalResourceId: LogicalResourceId): F[Option[PhysicalResourceId]] =
-      LoggerFactory[F].create.flatMap { implicit l =>
+      LoggerFactory[F].create.flatMap { case given Logger[F] =>
         val req = DescribeStackResourceRequest.builder()
           .stackName(stack.value)
           .logicalResourceId(logicalResourceId.value)

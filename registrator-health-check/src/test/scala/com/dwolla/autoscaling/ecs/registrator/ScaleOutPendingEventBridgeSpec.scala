@@ -3,21 +3,20 @@ package com.dwolla.autoscaling.ecs.registrator
 import cats.*
 import cats.effect.*
 import cats.syntax.all.*
-import com.dwolla.aws.*
-import com.dwolla.aws.autoscaling.*
 import com.dwolla.aws.autoscaling.AdvanceLifecycleHook.*
 import com.dwolla.aws.autoscaling.LifecycleState.PendingWait
-import com.dwolla.aws.cloudformation.*
+import com.dwolla.aws.autoscaling.{*, given}
+import com.dwolla.aws.cloudformation.{*, given}
 import com.dwolla.aws.ec2.*
-import com.dwolla.aws.ecs.*
-import com.dwolla.aws.sns.SnsTopicArn
+import com.dwolla.aws.ecs.{*, given}
+import com.dwolla.aws.sns.{SnsTopicArn, given}
+import com.dwolla.aws.{*, given}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
 
 class ScaleOutPendingEventBridgeSpec
   extends CatsEffectSuite
-    with ScalaCheckEffectSuite
-    with com.dwolla.aws.ArbitraryInstances {
+    with ScalaCheckEffectSuite {
 
   test("ScaleOutPendingEventBridge continues autoscaling when Registrator is running on instance") {
     forAllF { (arbTopic: SnsTopicArn,

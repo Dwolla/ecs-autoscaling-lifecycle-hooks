@@ -7,7 +7,7 @@ import org.typelevel.log4cats.noop.NoOpFactory
 import software.amazon.awssdk.services.cloudformation.CloudFormationAsyncClient
 
 object TestApp extends ResourceApp.Simple {
-  private implicit val loggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
+  given LoggerFactory[IO] = NoOpFactory[IO]
 
   private def stackArn = StackArn(???)
   private val logicalResourceId = LogicalResourceId(???)

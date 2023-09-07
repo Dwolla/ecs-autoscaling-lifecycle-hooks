@@ -2,7 +2,8 @@ package com.dwolla.aws.sns
 
 import cats.effect.*
 import cats.effect.std.Dispatcher
-import com.dwolla.aws.ArbitraryInstances
+import com.dwolla.aws
+import com.dwolla.aws.sns.given
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.*
@@ -15,10 +16,9 @@ import java.util.concurrent.CompletableFuture
 
 class SnsAlgSpec
   extends CatsEffectSuite
-    with ScalaCheckEffectSuite
-    with ArbitraryInstances {
+    with ScalaCheckEffectSuite {
 
-  private implicit val loggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
+  given LoggerFactory[IO] = NoOpFactory[IO]
 
   test("SnsAlg should publish a message using the underlying client") {
     forAllF { (topic: SnsTopicArn, message: String, messageId: UUID) =>

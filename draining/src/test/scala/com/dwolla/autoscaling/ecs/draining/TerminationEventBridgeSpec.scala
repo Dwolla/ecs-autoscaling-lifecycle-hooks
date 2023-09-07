@@ -1,19 +1,17 @@
 package com.dwolla.autoscaling.ecs.draining
 
 import cats.effect.*
-import com.dwolla.aws
-import com.dwolla.aws.autoscaling.*
 import com.dwolla.aws.autoscaling.LifecycleState.TerminatingWait
+import com.dwolla.aws.autoscaling.{*, given}
 import com.dwolla.aws.ec2.Ec2InstanceId
-import com.dwolla.aws.ecs.*
-import com.dwolla.aws.sns.SnsTopicArn
+import com.dwolla.aws.ecs.{*, given}
+import com.dwolla.aws.sns.{SnsTopicArn, given}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
 
 class TerminationEventBridgeSpec 
   extends CatsEffectSuite 
-    with ScalaCheckEffectSuite 
-    with aws.ArbitraryInstances {
+    with ScalaCheckEffectSuite {
 
   test("TerminationEventBridge should mark a non-draining instance as draining and pause and recurse") {
     forAllF { (arbSnsTopicArn: SnsTopicArn, 

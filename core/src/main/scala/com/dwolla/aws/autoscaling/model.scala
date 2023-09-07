@@ -41,7 +41,7 @@ case class TestNotification(accountId: AccountId,
                            ) extends AutoScalingSnsMessage
 
 object LifecycleHookNotification extends DerivedCirceCodec {
-  implicit val lifecycleHookNotificationEncoder: Encoder[LifecycleHookNotification] =
+  given Encoder[LifecycleHookNotification] =
     Encoder.forProduct10(
       "Service",
       "Time",
@@ -66,7 +66,7 @@ object LifecycleHookNotification extends DerivedCirceCodec {
         a.notificationMetadata
       )
     }
-  implicit val lifecycleHookNotificationDecoder: Decoder[LifecycleHookNotification] =
+  given Decoder[LifecycleHookNotification] =
     Decoder.forProduct10(
       "Service",
       "Time",
@@ -81,7 +81,7 @@ object LifecycleHookNotification extends DerivedCirceCodec {
     )(LifecycleHookNotification.apply)
 }
 object TestNotification extends DerivedCirceCodec {
-  implicit val testNotificationEncoder: Encoder[TestNotification] =
+  given Encoder[TestNotification] =
     Encoder.forProduct7(
       "AccountId",
       "RequestId",
@@ -100,7 +100,7 @@ object TestNotification extends DerivedCirceCodec {
         x.time,
       )
     }
-  implicit val testNotificationDecoder: Decoder[TestNotification] =
+  given Decoder[TestNotification] =
     Decoder.forProduct7(
       "AccountId",
       "RequestId",
@@ -113,7 +113,7 @@ object TestNotification extends DerivedCirceCodec {
 }
 
 object AutoScalingSnsMessage {
-  implicit val autoScalingSnsMessageDecoder: Decoder[AutoScalingSnsMessage] =
+  given Decoder[AutoScalingSnsMessage] =
     Decoder[LifecycleHookNotification].widen[AutoScalingSnsMessage]
       .or(Decoder[TestNotification].widen[AutoScalingSnsMessage])
 }

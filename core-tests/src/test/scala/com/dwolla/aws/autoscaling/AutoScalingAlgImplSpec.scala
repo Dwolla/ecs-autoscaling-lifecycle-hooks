@@ -3,10 +3,10 @@ package com.dwolla.aws.autoscaling
 import cats.effect.*
 import cats.effect.std.Dispatcher
 import cats.effect.testkit.TestControl
-import com.dwolla.aws.ArbitraryInstances
 import com.dwolla.aws.autoscaling.LifecycleState.*
-import com.dwolla.aws.sns.{SnsAlg, SnsTopicArn}
+import com.dwolla.aws.autoscaling.given
 import com.dwolla.aws.ec2.Ec2InstanceId
+import com.dwolla.aws.sns.{SnsAlg, SnsTopicArn, given}
 import io.circe.syntax.*
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
@@ -21,10 +21,9 @@ import scala.jdk.CollectionConverters.*
 
 class AutoScalingAlgImplSpec
   extends CatsEffectSuite
-  with ScalaCheckEffectSuite
-  with ArbitraryInstances {
+    with ScalaCheckEffectSuite {
 
-  private implicit val loggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
+  given LoggerFactory[IO] = NoOpFactory[IO]
 
   test("AutoScalingAlgImpl should make an async completeLifecycleAction request to continueAutoScaling") {
     forAllF { (arbLifecycleHookNotification: LifecycleHookNotification) =>

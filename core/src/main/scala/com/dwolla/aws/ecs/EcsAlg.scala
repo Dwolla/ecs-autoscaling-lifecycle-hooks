@@ -26,7 +26,7 @@ abstract class EcsAlg[F[_] : Applicative, G[_]] {
 
 object EcsAlg {
   def apply[F[_] : Monad : LoggerFactory](ecs: ECS[F])
-                                         (implicit C: Compiler[F, F]): EcsAlg[F, Stream[F, *]] = new EcsAlg[F, Stream[F, *]] {
+                                         (using Compiler[F, F]): EcsAlg[F, Stream[F, *]] = new EcsAlg[F, Stream[F, *]] {
     override def listClusterArns: Stream[F, ClusterArn] =
       Pagination.offsetUnfoldChunkEval {
         ecs
@@ -57,7 +57,7 @@ object EcsAlg {
         .unNone
 
     override def findEc2Instance(ec2InstanceId: Ec2InstanceId): F[Option[(ClusterArn, ContainerInstance)]] =
-      LoggerFactory[F].create.flatMap { implicit L =>
+      LoggerFactory[F].create.flatMap { case given Logger[F] =>
         listClusterArns
           // TODO listContainerInstances could use a CQL expression to narrow the search
           .mproduct(listContainerInstances(_).filter(_.ec2InstanceId == ec2InstanceId))
@@ -96,7 +96,7 @@ object EcsAlg {
     override def isTaskDefinitionRunningOnInstance(cluster: ClusterArn,
                                                    ci: ContainerInstance,
                                                    taskDefinition: TaskDefinitionArn): F[Boolean] =
-      LoggerFactory[F].create.flatMap { implicit L =>
+      LoggerFactory[F].create.flatMap { case given Logger[F] =>
         Logger[F].info(s"looking for task definition ${taskDefinition.value} on instance ${ci.containerInstanceId.value} in cluster ${cluster.value}") >>
           listTasks(cluster, ci)
             .through(describeTasks(cluster))
@@ -109,7 +109,7 @@ object EcsAlg {
       }
 
     override protected def drainInstanceImpl(cluster: ClusterArn, ci: ContainerInstance): F[Unit] =
-      LoggerFactory[F].create.flatMap { implicit L =>
+      LoggerFactory[F].create.flatMap { case given Logger[F] =>
         Logger[F].info(s"draining instance $ci in cluster $cluster") >>
           ecs.updateContainerInstancesState(List(ci.containerInstanceId.value), com.amazonaws.ecs.ContainerInstanceStatus.DRAINING, cluster.value.some)
             .void

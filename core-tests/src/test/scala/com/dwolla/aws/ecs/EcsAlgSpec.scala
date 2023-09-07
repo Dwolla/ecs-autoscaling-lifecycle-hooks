@@ -6,8 +6,7 @@ import cats.effect.*
 import cats.syntax.all.*
 import com.amazonaws.ecs.ContainerInstanceStatus.DRAINING
 import com.amazonaws.ecs.{BoxedInteger, ContainerInstanceField, DescribeContainerInstancesResponse, DescribeTasksResponse, DesiredStatus, ECS, LaunchType, ListClustersResponse, ListContainerInstancesResponse, ListTasksResponse, Task, TaskField, UpdateContainerInstancesStateResponse, ContainerInstance as AwsContainerInstance}
-import com.dwolla.aws.ArbitraryInstances
-import com.dwolla.aws.ecs.*
+import com.dwolla.aws.ecs.{*, given}
 import fs2.{Chunk, Stream}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
@@ -21,16 +20,15 @@ import scala.annotation.nowarn
 @nowarn("""msg=pattern selector should be an instance of Matchable[,]+\s+but it has unmatchable type EcsAlgSpec\.this\.ClusterWithInstances(?:\.Type)? instead""")
 class EcsAlgSpec
   extends CatsEffectSuite
-    with ScalaCheckEffectSuite
-    with ArbitraryInstances {
+    with ScalaCheckEffectSuite {
 
-  private implicit def loggerFactory[F[_] : Applicative]: LoggerFactory[F] = NoOpFactory[F]
+  given [F[_] : Applicative]: LoggerFactory[F] = NoOpFactory[F]
 
   def fakeECS[F[_] : ApplicativeThrow](arbCluster: ArbitraryCluster): ECS[F] = new FakeECS[F] {
-    private val listClustersResponses: Map[NextPageToken, ListClustersResponse] =
+    private lazy val listClustersResponses: Map[NextPageToken, ListClustersResponse] =
       ArbitraryPagination.paginateWith[Chunk, ArbitraryCluster, ClusterWithInstances, ClusterArn](arbCluster) {
-        case ClusterWithInstances((c, _)) => c.clusterArn
-      }
+          case ClusterWithInstances((c, _)) => c.clusterArn
+        }
         .view
         .mapValues {
           case (c, n) =>
@@ -38,16 +36,16 @@ class EcsAlgSpec
         }
         .toMap
 
-    private val listContainerInstancesResponses: Map[Option[ClusterArn], Map[NextPageToken, ListContainerInstancesResponse]] =
+    private lazy val listContainerInstancesResponses: Map[Option[ClusterArn], Map[NextPageToken, ListContainerInstancesResponse]] =
       arbCluster
         .value
         .flatMap(_.toList)
         .map { cwi =>
           val clusterArn: Option[ClusterArn] = cwi.value._1.clusterArn.some
           val pages = ArbitraryPagination.paginate(cwi.value._2).view.mapValues {
-            case (c, n) =>
-              ListContainerInstancesResponse(c.map(_.containerInstanceId.value).toList.some, n.value)
-          }
+              case (c, n) =>
+                ListContainerInstancesResponse(c.map(_.containerInstanceId.value).toList.some, n.value)
+            }
             .toMap
 
           clusterArn -> pages
@@ -62,7 +60,7 @@ class EcsAlgSpec
         status = ci.status.toString.some,
       )
 
-    private val clusterMap: Map[ClusterArn, List[ContainerInstance]] = Foldable[List].fold {
+    private lazy val clusterMap: Map[ClusterArn, List[ContainerInstance]] = Foldable[List].fold {
       arbCluster
         .value
         .flatMap(_.toList)

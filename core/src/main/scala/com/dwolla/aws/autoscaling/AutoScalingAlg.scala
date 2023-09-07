@@ -31,7 +31,7 @@ object AutoScalingAlg {
 class AutoScalingAlgImpl[F[_] : Async : LoggerFactory](autoScalingClient: AutoScalingAsyncClient,
                                                        sns: SnsAlg[F]) extends AutoScalingAlg[F] {
   private def getInstanceLifecycleState(ec2Instance: Ec2InstanceId): F[Option[LifecycleState]] =
-    LoggerFactory[F].create.flatMap { implicit logger =>
+    LoggerFactory[F].create.flatMap { case given Logger[F] =>
       for {
         _ <- Logger[F].info(s"checking lifecycle state for instance $ec2Instance")
         req = DescribeAutoScalingInstancesRequest.builder().instanceIds(ec2Instance.value).build()
@@ -53,7 +53,7 @@ class AutoScalingAlgImpl[F[_] : Async : LoggerFactory](autoScalingClient: AutoSc
                               ): F[Unit] = {
     val sleepDuration = 5.seconds
 
-    LoggerFactory[F].create.flatMap { implicit logger =>
+    LoggerFactory[F].create.flatMap { case given Logger[F] =>
       Logger[F].info(s"Sleeping for $sleepDuration, then restarting Lambda") >>
         getInstanceLifecycleState(l.EC2InstanceId)
           .map(_.contains(onlyIfInState))

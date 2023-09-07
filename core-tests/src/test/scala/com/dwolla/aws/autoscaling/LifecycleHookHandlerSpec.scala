@@ -5,8 +5,9 @@ import _root_.io.circe.literal.*
 import _root_.io.circe.syntax.*
 import cats.effect.*
 import cats.syntax.all.*
-import com.dwolla.aws.ArbitraryInstances
-import com.dwolla.aws.sns.SnsTopicArn
+import com.dwolla.aws
+import com.dwolla.aws.autoscaling.given
+import com.dwolla.aws.sns.{SnsTopicArn, given}
 import feral.lambda.events.SnsEvent
 import feral.lambda.{Context, ContextInstances, LambdaEnv}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
@@ -17,10 +18,9 @@ import org.typelevel.log4cats.noop.NoOpFactory
 class LifecycleHookHandlerSpec
   extends CatsEffectSuite
     with ScalaCheckEffectSuite
-    with ArbitraryInstances
     with ContextInstances {
 
-  private implicit val noopLoggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
+  given LoggerFactory[IO] = NoOpFactory[IO]
   private def snsMessage[T: Encoder](topic: SnsTopicArn, detail: T, maybeSubject: Option[String]): Json =
     json"""{
              "Records": [

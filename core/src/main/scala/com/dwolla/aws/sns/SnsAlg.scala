@@ -13,7 +13,7 @@ trait SnsAlg[F[_]] {
 object SnsAlg {
   def apply[F[_] : Async : LoggerFactory](client: SnsAsyncClient): SnsAlg[F] = new SnsAlg[F] {
     override def publish(topic: SnsTopicArn, message: String): F[Unit] =
-      LoggerFactory[F].create.flatMap { implicit l =>
+      LoggerFactory[F].create.flatMap { case given Logger[F] =>
         val req = PublishRequest.builder()
           .topicArn(topic.value)
           .message(message)

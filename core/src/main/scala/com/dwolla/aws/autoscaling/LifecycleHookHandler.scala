@@ -10,7 +10,7 @@ import org.typelevel.log4cats.LoggerFactory
 
 object LifecycleHookHandler {
   def apply[F[_] : MonadThrow : LoggerFactory](eventBridge: (SnsTopicArn, LifecycleHookNotification) => F[Unit])
-                                              (implicit C: fs2.Compiler[F, F]): LambdaEnv[F, SnsEvent] => F[Option[INothing]] = env =>
+                                              (using fs2.Compiler[F, F]): LambdaEnv[F, SnsEvent] => F[Option[INothing]] = env =>
     Stream.eval(env.event)
       .map(_.records)
       .flatMap(Stream.emits(_))

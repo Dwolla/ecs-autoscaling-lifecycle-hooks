@@ -14,7 +14,7 @@ type ClusterName = ClusterName.Type
 object ClusterName extends NewtypeWrapped[String]
 type TaskCount = TaskCount.Type
 object TaskCount extends NewtypeWrapped[Int] {
-  implicit val order: Order[TaskCount] = Order[Int].contramap(_.value)
+  given Order[TaskCount] = Order[Int].contramap(_.value)
 }
 type Region = Region.Type
 object Region extends NewtypeWrapped[String]

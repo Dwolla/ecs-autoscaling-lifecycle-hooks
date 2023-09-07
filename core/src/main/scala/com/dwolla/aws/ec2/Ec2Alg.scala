@@ -22,7 +22,7 @@ object Ec2Alg {
     override def getTagsForInstance(id: Ec2InstanceId): F[List[Tag]] = {
       val req = DescribeInstancesRequest.builder().instanceIds(id.value).build()
 
-      LoggerFactory[F].create.flatMap { implicit L =>
+      LoggerFactory[F].create.flatMap { case given Logger[F] =>
         for {
           _ <- Logger[F].info(s"describing instance ${id.value}")
           resp <- Async[F].fromCompletableFuture(

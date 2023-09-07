@@ -9,16 +9,17 @@ import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
 import software.amazon.awssdk.services.ec2.Ec2AsyncClient
 import software.amazon.awssdk.services.ec2.model.{DescribeInstancesRequest, DescribeInstancesResponse, Instance, Reservation}
+import com.dwolla.aws
 
 import java.util.concurrent.CompletableFuture
 import scala.jdk.CollectionConverters.*
+import com.dwolla.aws.ec2.given
 
 class Ec2AlgSpec
   extends CatsEffectSuite
-    with ScalaCheckEffectSuite
-    with ArbitraryInstances {
+    with ScalaCheckEffectSuite {
 
-  private implicit val loggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
+  given LoggerFactory[IO] = NoOpFactory[IO]
 
   test("Ec2Alg should retrieve the tags for an instance") {
     forAllF { (instance: Instance) =>

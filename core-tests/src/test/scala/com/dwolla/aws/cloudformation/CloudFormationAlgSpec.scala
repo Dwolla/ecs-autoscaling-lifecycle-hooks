@@ -2,10 +2,11 @@ package com.dwolla.aws.cloudformation
 
 import cats.effect.*
 import cats.effect.std.Dispatcher
-import com.dwolla.aws.*
+import com.dwolla.aws
+import com.dwolla.aws.cloudformation.given
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
-import org.scalacheck.effect.PropF.forAllF
 import org.scalacheck.Arbitrary
+import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
 import software.amazon.awssdk.services.cloudformation.CloudFormationAsyncClient
@@ -16,10 +17,9 @@ import scala.jdk.CollectionConverters.*
 
 class CloudFormationAlgSpec
   extends CatsEffectSuite
-    with ScalaCheckEffectSuite
-    with ArbitraryInstances {
+    with ScalaCheckEffectSuite {
 
-  private implicit val loggerFactory: LoggerFactory[IO] = NoOpFactory[IO]
+  given LoggerFactory[IO] = NoOpFactory[IO]
 
   test("CloudFormationAlg should return the physical resource ID for the given parameters, if it can") {
     forAllF { (stack: StackArn,
