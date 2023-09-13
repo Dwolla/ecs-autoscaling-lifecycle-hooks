@@ -26,4 +26,4 @@ set -o xtrace -o nounset -o pipefail
 npm install -g npm
 npm install -g serverless
 
-sbt "deploy Admin"
+sbt "show deploy Admin"
