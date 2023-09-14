@@ -1,4 +1,5 @@
 stages:
+  enableCD: true
   build:
     nodeLabel: sbt
     steps:
