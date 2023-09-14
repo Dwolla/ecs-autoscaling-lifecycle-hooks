@@ -161,7 +161,7 @@ lazy val `aws-testkit` = project
   .settings(
     libraryDependencies ++= {
       Seq(
-        "co.fs2" %% "fs2-core" % "3.9.1",
+        "co.fs2" %% "fs2-core" % "3.9.2",
         "org.scalacheck" %% "scalacheck" % "1.17.0",
         "com.47deg" %% "scalacheck-toolbox-datetime" % "0.7.0" exclude("joda-time", "joda-time"),
       )
