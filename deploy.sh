@@ -13,7 +13,6 @@ if [ -z ${TAG_NAME+x} ]; then
 else
   TARGET_COMMIT="${TAG_NAME}"
 fi
-set -o nounset
 readonly TARGET_COMMIT
 
 # use `git checkout --force` here because we expect the working directory not to be
