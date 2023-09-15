@@ -36,7 +36,7 @@ object ServerlessDeployPlugin extends AutoPlugin {
       if (taggedVersion.value.exists(_.toString == version.value)) {
         if (deployProcess.! == 0) Success
         else throw new IllegalStateException("Serverless returned a non-zero exit code. Please check the logs for more information.")
-      } else SkippedBecauseVersionIsNotLatestTag
+      } else SkippedBecauseVersionIsNotLatestTag(version.value, taggedVersion.value)
     }.evaluated
   )
 
@@ -59,5 +59,5 @@ object ServerlessDeployPlugin extends AutoPlugin {
 
   sealed trait DeployOutcome // no failed outcome because we just throw an exception in that case
   case object Success extends DeployOutcome
-  case object SkippedBecauseVersionIsNotLatestTag extends DeployOutcome
+  case class SkippedBecauseVersionIsNotLatestTag(version: String, taggedVersion: Option[Version]) extends DeployOutcome
 }
