@@ -42,10 +42,10 @@ lazy val `autoscaling-ecs-core`: Project = project
         "io.monix" %% "newtypes-circe-v0-14" % "0.2.3",
 
         // TODO when smithy4s is updated, hopefully these Java SDK artifacts can be replaced with smithy4s equivalents
-        "software.amazon.awssdk" % "autoscaling" % "2.20.148",
-        "software.amazon.awssdk" % "sns" % "2.20.148",
-        "software.amazon.awssdk" % "ec2" % "2.20.148",
-        "software.amazon.awssdk" % "cloudformation" % "2.20.148",
+        "software.amazon.awssdk" % "autoscaling" % "2.20.159",
+        "software.amazon.awssdk" % "sns" % "2.20.159",
+        "software.amazon.awssdk" % "ec2" % "2.20.159",
+        "software.amazon.awssdk" % "cloudformation" % "2.20.159",
       )
     }
   )
