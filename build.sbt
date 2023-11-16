@@ -35,7 +35,7 @@ lazy val `autoscaling-ecs-core`: Project = project
     libraryDependencies ++= {
       Seq(
         "com.dwolla" %% "fs2-utils" % "3.0.0-RC2",
-        "org.typelevel" %% "feral-lambda" % "0.2.3",
+        "org.typelevel" %% "feral-lambda" % "0.2.4",
         "org.typelevel" %% "log4cats-core" % "2.6.0",
         "io.circe" %% "circe-parser" % "0.14.6",
         "io.monix" %% "newtypes-core" % "0.2.3",
@@ -82,7 +82,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
   .settings(
     libraryDependencies ++= {
       Seq(
-        "org.typelevel" %% "feral-lambda" % "0.2.3",
+        "org.typelevel" %% "feral-lambda" % "0.2.4",
         "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
         "org.http4s" %% "http4s-ember-client" % "0.23.23",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.5.1" % Runtime,
@@ -115,7 +115,7 @@ lazy val `registrator-health-check-lambda` = project
   .settings(
     libraryDependencies ++= {
       Seq(
-        "org.typelevel" %% "feral-lambda" % "0.2.3",
+        "org.typelevel" %% "feral-lambda" % "0.2.4",
         "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
         "org.http4s" %% "http4s-ember-client" % "0.23.21",
         "org.typelevel" %% "mouse" % "1.2.1",
@@ -149,7 +149,7 @@ lazy val `feral-testkit` = project
   .settings(
     libraryDependencies ++= {
       Seq(
-        "org.typelevel" %% "feral-lambda" % "0.2.3",
+        "org.typelevel" %% "feral-lambda" % "0.2.4",
         "org.scalacheck" %% "scalacheck" % "1.17.0",
         "io.circe" %% "circe-testing" % "0.14.6",
       )
