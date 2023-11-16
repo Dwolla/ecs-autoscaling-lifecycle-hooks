@@ -33,7 +33,7 @@ object EcsAlg {
         ecs
           .listClusters(_: Option[String], None)
           .map { resp =>
-            resp.clusterArns.map(Chunk.iterable(_)).getOrElse(Chunk.empty) -> resp.nextToken
+            resp.clusterArns.map(Chunk.from(_)).getOrElse(Chunk.empty) -> resp.nextToken
           }
       }
         .map(ClusterArn(_))
@@ -103,7 +103,7 @@ object EcsAlg {
               containerInstance = ci.value.some,
               nextToken = nextToken,
             )
-          } yield resp.taskArns.map(Chunk.iterable(_)).getOrElse(Chunk.empty) -> resp.nextToken
+          } yield resp.taskArns.map(Chunk.from(_)).getOrElse(Chunk.empty) -> resp.nextToken
         }
       } yield TaskArn(taskArn)
 
@@ -132,6 +132,6 @@ object EcsAlg {
 
   extension[A] (maybeList: Option[List[A]]) {
     def toChunk: Chunk[A] =
-      maybeList.fold(Chunk.empty)(Chunk.iterable)
+      maybeList.fold(Chunk.empty)(Chunk.from)
   }
 }
