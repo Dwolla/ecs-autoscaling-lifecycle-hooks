@@ -9,7 +9,7 @@ import com.dwolla.aws.ecs.EcsAlg
 import fs2.Stream
 import org.http4s.ember.client.EmberClientBuilder
 import org.typelevel.log4cats.*
-import smithy4s.aws.http4s.*
+import smithy4s.aws.*
 import smithy4s.aws.kernel.AwsRegion
 
 object TestApp extends IOApp.Simple {
@@ -18,7 +18,8 @@ object TestApp extends IOApp.Simple {
       for {
         client <- EmberClientBuilder.default[IO].build
         given LoggerFactory[IO] = new ConsoleLogger[IO]
-        ecs <- ECS.simpleAwsClient(client, AwsRegion.US_WEST_2).map(EcsAlg(_))
+        awsEnv <- AwsEnvironment.default(client, AwsRegion.US_WEST_2)
+        ecs <- AwsClient(ECS, awsEnv).map(EcsAlg(_))
       } yield ecs
     }
       .flatMap { ecs =>
