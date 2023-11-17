@@ -2,13 +2,13 @@ package com.dwolla.autoscaling.ecs.draining
 
 import cats.*
 import cats.syntax.all.*
+import com.amazonaws.sns.TopicARN
 import com.dwolla.aws.autoscaling.*
 import com.dwolla.aws.autoscaling.LifecycleState.TerminatingWait
 import com.dwolla.aws.ecs.*
-import com.dwolla.aws.sns.SnsTopicArn
 
 class TerminationEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G], AutoScaling: AutoScalingAlg[F]) {
-  def apply(topic: SnsTopicArn, lifecycleHook: LifecycleHookNotification): F[Unit] =
+  def apply(topic: TopicARN, lifecycleHook: LifecycleHookNotification): F[Unit] =
     for {
       maybeInstance <- ECS.findEc2Instance(lifecycleHook.EC2InstanceId)
       tasksRemaining <- maybeInstance match {
@@ -21,6 +21,6 @@ class TerminationEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G], AutoScaling:
 }
 
 object TerminationEventBridge {
-  def apply[F[_] : Monad, G[_]](ecsAlg: EcsAlg[F, G], autoScalingAlg: AutoScalingAlg[F]): (SnsTopicArn, LifecycleHookNotification) => F[Unit] =
+  def apply[F[_] : Monad, G[_]](ecsAlg: EcsAlg[F, G], autoScalingAlg: AutoScalingAlg[F]): (TopicARN, LifecycleHookNotification) => F[Unit] =
     new TerminationEventBridge(ecsAlg, autoScalingAlg).apply
 }

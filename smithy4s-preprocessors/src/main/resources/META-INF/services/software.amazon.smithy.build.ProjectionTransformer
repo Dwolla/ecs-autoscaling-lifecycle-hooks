@@ -1,0 +1,5 @@
+preprocessors.AutoscalingPreprocessor
+preprocessors.CloudformationPreprocessor
+preprocessors.Ec2Preprocessor
+preprocessors.EcsPreprocessor
+preprocessors.SnsPreprocessor

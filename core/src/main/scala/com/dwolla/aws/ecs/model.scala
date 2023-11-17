@@ -1,10 +1,11 @@
 package com.dwolla.aws.ecs
 
 import cats.Order
-import monix.newtypes.*
 import cats.syntax.all.*
+import com.amazonaws.ec2.InstanceId
 import com.dwolla.aws.AccountId
-import com.dwolla.aws.ec2.Ec2InstanceId
+import monix.newtypes.*
+import smithy4s.aws.AwsRegion
 
 type ContainerInstanceId = ContainerInstanceId.Type
 object ContainerInstanceId extends NewtypeWrapped[String]
@@ -18,15 +19,13 @@ type TaskCount = TaskCount.Type
 object TaskCount extends NewtypeWrapped[Long] {
   given Order[TaskCount] = Order[Long].contramap(_.value)
 }
-type Region = Region.Type
-object Region extends NewtypeWrapped[String]
 
-case class Cluster(region: Region, accountId: AccountId, name: ClusterName) {
+case class Cluster(region: AwsRegion, accountId: AccountId, name: ClusterName) {
   val clusterArn: ClusterArn = ClusterArn(s"arn:aws:ecs:$region:$accountId:cluster/$name")
 }
 
 case class ContainerInstance(containerInstanceId: ContainerInstanceId,
-                             ec2InstanceId: Ec2InstanceId,
+                             ec2InstanceId: InstanceId,
                              countOfTasksNotStopped: TaskCount,
                              status: ContainerInstanceStatus,
                             )

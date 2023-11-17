@@ -1,5 +1,6 @@
 package com.dwolla.aws.cloudformation
 
+import com.amazonaws.cloudformation.*
 import org.scalacheck.{Arbitrary, Gen}
 
 val genStackArn: Gen[StackArn] =
@@ -16,3 +17,9 @@ given Arbitrary[LogicalResourceId] = Arbitrary(genLogicalResourceId)
 
 val genPhysicalResourceId: Gen[PhysicalResourceId] = Gen.asciiPrintableStr.map(PhysicalResourceId(_))
 given Arbitrary[PhysicalResourceId] = Arbitrary(genPhysicalResourceId)
+
+val genResourceType: Gen[ResourceType] = Gen.asciiPrintableStr.map(ResourceType.apply)
+given Arbitrary[ResourceType] = Arbitrary(genResourceType)
+
+val genResourceStatus: Gen[ResourceStatus] = Gen.oneOf(ResourceStatus.values)
+given Arbitrary[ResourceStatus] = Arbitrary(genResourceStatus)

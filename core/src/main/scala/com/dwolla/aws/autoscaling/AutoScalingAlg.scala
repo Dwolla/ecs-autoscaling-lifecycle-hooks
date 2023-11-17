@@ -3,19 +3,18 @@ package com.dwolla.aws.autoscaling
 import cats.effect.*
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
+import com.amazonaws.autoscaling.{AutoScaling, LifecycleActionResult, XmlStringMaxLen19}
+import com.amazonaws.ec2.InstanceId
+import com.amazonaws.sns.*
 import com.dwolla.aws.autoscaling.LifecycleState.*
 import com.dwolla.aws.sns.*
-import com.dwolla.aws.ec2.*
 import io.circe.syntax.*
 import org.typelevel.log4cats.{Logger, LoggerFactory}
-import software.amazon.awssdk.services.autoscaling.*
-import software.amazon.awssdk.services.autoscaling.model.{CompleteLifecycleActionRequest, DescribeAutoScalingInstancesRequest}
 
 import scala.concurrent.duration.*
-import scala.jdk.CollectionConverters.*
 
 trait AutoScalingAlg[F[_]] {
-  def pauseAndRecurse(topic: SnsTopicArn, 
+  def pauseAndRecurse(topic: TopicARN,
                       lifecycleHookNotification: LifecycleHookNotification,
                       onlyIfInState: LifecycleState,
                      ): F[Unit]
@@ -23,31 +22,35 @@ trait AutoScalingAlg[F[_]] {
 }
 
 object AutoScalingAlg {
-  def apply[F[_] : Async : LoggerFactory](autoScalingClient: AutoScalingAsyncClient,
+  def apply[F[_] : Async : LoggerFactory](autoScalingClient: AutoScaling[F],
                                           sns: SnsAlg[F]): AutoScalingAlg[F] =
     new AutoScalingAlgImpl(autoScalingClient, sns)
 }
 
-class AutoScalingAlgImpl[F[_] : Async : LoggerFactory](autoScalingClient: AutoScalingAsyncClient,
+extension (i: InstanceId) {
+  def forAutoScaling: XmlStringMaxLen19 = XmlStringMaxLen19(i.value)
+}
+
+class AutoScalingAlgImpl[F[_] : Async : LoggerFactory](autoScalingClient: AutoScaling[F],
                                                        sns: SnsAlg[F]) extends AutoScalingAlg[F] {
-  private def getInstanceLifecycleState(ec2Instance: Ec2InstanceId): F[Option[LifecycleState]] =
+  private def getInstanceLifecycleState(ec2Instance: InstanceId): F[Option[LifecycleState]] =
     LoggerFactory[F].create.flatMap { case given Logger[F] =>
       for {
         _ <- Logger[F].info(s"checking lifecycle state for instance $ec2Instance")
-        req = DescribeAutoScalingInstancesRequest.builder().instanceIds(ec2Instance.value).build()
-        resp <- Async[F].fromCompletableFuture(Sync[F].delay(autoScalingClient.describeAutoScalingInstances(req)))
+        resp <- autoScalingClient.describeAutoScalingInstances(ec2Instance.forAutoScaling.pure[List].some)
       } yield
         resp
-          .autoScalingInstances()
-          .asScala
-          .collectFirst {
-            case instance if Ec2InstanceId(instance.instanceId()) == ec2Instance =>
-              LifecycleState.fromString(instance.lifecycleState())
+          .autoScalingInstances
+          .flatMap {
+            _.collectFirstSome {
+              case instance if InstanceId(instance.instanceId.value) == ec2Instance =>
+                LifecycleState.fromString(instance.lifecycleState.value)
+              case _ => None
+            }
           }
-          .flatten
     }
   
-  override def pauseAndRecurse(t: SnsTopicArn, 
+  override def pauseAndRecurse(t: TopicARN,
                                l: LifecycleHookNotification,
                                onlyIfInState: LifecycleState,
                               ): F[Unit] = {
@@ -58,22 +61,20 @@ class AutoScalingAlgImpl[F[_] : Async : LoggerFactory](autoScalingClient: AutoSc
         getInstanceLifecycleState(l.EC2InstanceId)
           .map(_.contains(onlyIfInState))
           .ifM(
-            sns.publish(t, l.asJson.noSpaces).delayBy(sleepDuration),
+            sns.publish(t, Message(l.asJson.noSpaces)).delayBy(sleepDuration),
             Logger[F].info("Instance not in PendingWait status; refusing to republish the SNS message")
           )
     }
   }
 
-  override def continueAutoScaling(l: LifecycleHookNotification): F[Unit] = {
-    val req = CompleteLifecycleActionRequest.builder()
-      .lifecycleHookName(l.lifecycleHookName.value)
-      .autoScalingGroupName(l.autoScalingGroupName.value)
-      .lifecycleActionResult("CONTINUE")
-      .instanceId(l.EC2InstanceId.value)
-      .build()
-
+  override def continueAutoScaling(l: LifecycleHookNotification): F[Unit] =
     LoggerFactory[F].create.flatMap(_.info(s"continuing auto scaling for ${l.autoScalingGroupName}")) >>
-      Async[F].fromCompletableFuture(Sync[F].delay(autoScalingClient.completeLifecycleAction(req))).void
-  }
+      autoScalingClient.completeLifecycleAction(
+        lifecycleHookName = l.lifecycleHookName.value,
+        autoScalingGroupName = l.autoScalingGroupName.value,
+        lifecycleActionResult = LifecycleActionResult("CONTINUE"),
+        instanceId = l.EC2InstanceId.forAutoScaling.some,
+      )
+        .void
 
 }

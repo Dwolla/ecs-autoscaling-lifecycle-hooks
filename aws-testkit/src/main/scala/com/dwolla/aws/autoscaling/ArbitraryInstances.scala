@@ -1,22 +1,29 @@
 package com.dwolla.aws.autoscaling
 
 import cats.syntax.all.*
-import java.time.*
-import com.dwolla.aws.AccountId
-import com.dwolla.aws.ec2.Ec2InstanceId
-import com.fortysevendeg.scalacheck.datetime.jdk8.ArbitraryJdk8.*
-import org.scalacheck.Arbitrary.{arbUuid, arbitrary}
-import org.scalacheck.*
-import LifecycleState.*
-import software.amazon.awssdk.services.autoscaling.model.{DescribeAutoScalingInstancesResponse, AutoScalingInstanceDetails}
-import com.dwolla.aws.given 
+import com.amazonaws.autoscaling.{LifecycleState as _, *}
+import com.amazonaws.ec2.InstanceId
+import com.dwolla.aws.autoscaling.LifecycleState.*
 import com.dwolla.aws.ec2.given
+import com.dwolla.aws.{AccountId, given}
+import com.fortysevendeg.scalacheck.datetime.jdk8.ArbitraryJdk8.*
+import org.scalacheck.*
+import org.scalacheck.Arbitrary.{arbChar, arbUuid, arbitrary}
+
+import java.time.*
+
+given Arbitrary[ResourceName] = Arbitrary(Gen.asciiStr.map(ResourceName.apply))
+given Arbitrary[AsciiStringMaxLen255] = Arbitrary {
+  Gen.chooseNum(0, 255)
+    .flatMap(Gen.stringOfN(_, Gen.asciiChar))
+    .map(AsciiStringMaxLen255.apply)
+}
 
 // TODO genAutoScalingGroupName could be more realistic
-val genAutoScalingGroupName: Gen[AutoScalingGroupName] = Gen.asciiStr.map(AutoScalingGroupName(_))
+val genAutoScalingGroupName: Gen[AutoScalingGroupName] = arbitrary[ResourceName].map(AutoScalingGroupName(_))
 given Arbitrary[AutoScalingGroupName] = Arbitrary(genAutoScalingGroupName)
 
-val genLifecycleHookName: Gen[LifecycleHookName] = Gen.asciiStr.map(LifecycleHookName(_))
+val genLifecycleHookName: Gen[LifecycleHookName] = arbitrary[AsciiStringMaxLen255].map(LifecycleHookName(_))
 given Arbitrary[LifecycleHookName] = Arbitrary(genLifecycleHookName)
 
 val genLifecycleTransition: Gen[LifecycleTransition] = Gen.const("autoscaling:EC2_INSTANCE_TERMINATING").map(LifecycleTransition(_))
@@ -31,9 +38,9 @@ val genLifecycleHookNotification: Gen[LifecycleHookNotification] =
     accountId <- arbitrary[AccountId]
     groupName <- arbitrary[AutoScalingGroupName]
     hookName <- arbitrary[LifecycleHookName]
-    ec2InstanceId <- arbitrary[Ec2InstanceId]
+    InstanceId <- arbitrary[InstanceId]
     lifecycleTransition <- arbitrary[LifecycleTransition]
-  } yield LifecycleHookNotification(service, time, requestId, lifecycleActionToken, accountId, groupName, hookName, ec2InstanceId, lifecycleTransition, None)
+  } yield LifecycleHookNotification(service, time, requestId, lifecycleActionToken, accountId, groupName, hookName, InstanceId, lifecycleTransition, None)
 given Arbitrary[LifecycleHookNotification] = Arbitrary(genLifecycleHookNotification)
 
 val genLifecycleState: Gen[LifecycleState] =
@@ -46,7 +53,19 @@ val genLifecycleState: Gen[LifecycleState] =
   )
 given Arbitrary[LifecycleState] = Arbitrary(genLifecycleState)
 
-def genAutoScalingInstanceDetails(maybeId: Option[Ec2InstanceId] = None,
+given Arbitrary[XmlStringMaxLen255] = Arbitrary {
+  Gen.chooseNum(0, 255)
+    .flatMap(Gen.stringOfN(_, arbitrary[Char]))
+    .map(XmlStringMaxLen255.apply)
+}
+given Arbitrary[XmlStringMaxLen32] = Arbitrary {
+  Gen.chooseNum(0, 32)
+    .flatMap(Gen.stringOfN(_, arbitrary[Char]))
+    .map(XmlStringMaxLen32.apply)
+}
+given Arbitrary[InstanceProtected] = Arbitrary(arbitrary[Boolean].map(InstanceProtected.apply))
+
+def genAutoScalingInstanceDetails(maybeId: Option[InstanceId] = None,
                                   maybeAutoScalingGroupName: Option[AutoScalingGroupName] = None,
                                   maybeLifecycleState: Option[LifecycleState] = None,
                                  ): Gen[AutoScalingInstanceDetails] =
@@ -54,27 +73,37 @@ def genAutoScalingInstanceDetails(maybeId: Option[Ec2InstanceId] = None,
     id <- maybeId.orGen
     asgName <- maybeAutoScalingGroupName.orGen
     lifecycleState <- maybeLifecycleState.orGen
+    availabilityZone <- arbitrary[XmlStringMaxLen255]
+    healthStatus <- arbitrary[XmlStringMaxLen32]
+    protectedFromScaleIn <- arbitrary[InstanceProtected]
+    instanceType <- Gen.option(arbitrary[XmlStringMaxLen255])
+    launchConfigurationName = None
+    launchTemplate = None
+    weightedCapacity = None
   } yield
-    AutoScalingInstanceDetails
-      .builder()
-      .instanceId(id.value)
-      .autoScalingGroupName(asgName.value)
-      .lifecycleState(lifecycleState.awsName)
-      .build()
+    AutoScalingInstanceDetails(
+      instanceId = XmlStringMaxLen19(id.value),
+      autoScalingGroupName = XmlStringMaxLen255(asgName.value.value),
+      lifecycleState = XmlStringMaxLen32(lifecycleState.awsName),
+      availabilityZone = availabilityZone,
+      healthStatus = healthStatus,
+      protectedFromScaleIn = protectedFromScaleIn,
+      instanceType = instanceType,
+      launchConfigurationName = launchConfigurationName,
+      launchTemplate = launchTemplate,
+      weightedCapacity = weightedCapacity,
+    )
 
-val genLifecycleHookNotificationWithRelatedDescribeAutoScalingInstancesResponse: Gen[(LifecycleHookNotification, DescribeAutoScalingInstancesResponse)] =
+val genLifecycleHookNotificationWithRelatedAutoScalingInstancesType: Gen[(LifecycleHookNotification, AutoScalingInstancesType)] =
   for {
     notification <- genLifecycleHookNotification
     groupName <- arbitrary[AutoScalingGroupName]
     autoScalingDetailsFromHook <- genAutoScalingInstanceDetails(notification.EC2InstanceId.some, groupName.some)
     otherAutoScalingDetails <- Gen.listOf(genAutoScalingInstanceDetails(maybeAutoScalingGroupName = groupName.some))
-  } yield {
-    notification -> DescribeAutoScalingInstancesResponse.builder()
-      .autoScalingInstances(otherAutoScalingDetails.appended(autoScalingDetailsFromHook) *)
-      .build()
-  }
-given Arbitrary[(LifecycleHookNotification, DescribeAutoScalingInstancesResponse)] =
-  Arbitrary(genLifecycleHookNotificationWithRelatedDescribeAutoScalingInstancesResponse)
+    details = otherAutoScalingDetails.appended(autoScalingDetailsFromHook)
+  } yield notification -> AutoScalingInstancesType(details.some) 
+given Arbitrary[(LifecycleHookNotification, AutoScalingInstancesType)] =
+  Arbitrary(genLifecycleHookNotificationWithRelatedAutoScalingInstancesType)
 
 extension [A](maybeA: Option[A]) {
   def orGen(using Arbitrary[A]): Gen[A] =

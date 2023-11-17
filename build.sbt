@@ -13,6 +13,19 @@ ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
 topLevelDirectory := None
 ThisBuild / scalacOptions += "-source:future"
 
+lazy val `smithy4s-preprocessors` = project
+  .in(file("smithy4s-preprocessors"))
+  .settings(
+    scalaVersion := "2.12.13", // 2.12 to match what SBT uses
+    scalacOptions -= "-source:future",
+    libraryDependencies ++= {
+      Seq(
+        "org.typelevel" %% "cats-core" % "2.10.0",
+        "software.amazon.smithy" % "smithy-build" % smithy4s.codegen.BuildInfo.smithyVersion,
+      )
+    },
+  )
+
 lazy val `smithy4s-generated` = project
   .in(file("smithy4s"))
   .settings(
@@ -20,10 +33,24 @@ lazy val `smithy4s-generated` = project
       Seq(
         "com.disneystreaming.smithy4s" %% "smithy4s-http4s" % smithy4sVersion.value,
         "com.disneystreaming.smithy4s" %% "smithy4s-aws-http4s" % smithy4sVersion.value,
-        "com.disneystreaming.smithy" % "aws-ecs-spec" % "2023.02.10",
       )
     },
-    scalacOptions ~= (_.filterNot(s => s.startsWith("-Ywarn") || s.startsWith("-Xlint") || s.startsWith("-W") || s.equals("-Xfatal-warnings"))),
+    smithy4sAwsSpecs ++= Seq(
+      AWS.autoScaling,
+      AWS.cloudformation,
+      AWS.ec2,
+      AWS.ecs,
+      AWS.sns,
+    ),
+    scalacOptions += "-Wconf:any:s",
+    Compile / smithy4sModelTransformers ++= List(
+      "AutoscalingPreprocessor",
+      "CloudformationPreprocessor",
+      "Ec2Preprocessor",
+      "EcsPreprocessor",
+      "SnsPreprocessor",
+    ),
+    Compile / smithy4sAllDependenciesAsJars += (`smithy4s-preprocessors` / Compile / packageBin).value
   )
   .enablePlugins(
     Smithy4sCodegenPlugin,
@@ -40,12 +67,6 @@ lazy val `autoscaling-ecs-core`: Project = project
         "io.circe" %% "circe-parser" % "0.14.6",
         "io.monix" %% "newtypes-core" % "0.2.3",
         "io.monix" %% "newtypes-circe-v0-14" % "0.2.3",
-
-        // TODO when smithy4s is updated, hopefully these Java SDK artifacts can be replaced with smithy4s equivalents
-        "software.amazon.awssdk" % "autoscaling" % "2.20.162",
-        "software.amazon.awssdk" % "sns" % "2.20.162",
-        "software.amazon.awssdk" % "ec2" % "2.20.162",
-        "software.amazon.awssdk" % "cloudformation" % "2.20.162",
       )
     }
   )
@@ -58,6 +79,7 @@ lazy val `core-tests` = project
   .settings(
     libraryDependencies ++= {
       Seq(
+        "org.http4s" %% "http4s-ember-client" % "0.23.24" % Test,
         "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
@@ -68,8 +90,11 @@ lazy val `core-tests` = project
         "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "com.47deg" %% "scalacheck-toolbox-datetime" % "0.7.0" % Test exclude("joda-time", "joda-time"),
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
+        "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Test,
+        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.21.1" % Test,
       )
-    }
+    },
+    scalacOptions += "-language:adhocExtensions", // TODO see https://github.com/disneystreaming/smithy4s/issues/1307
   )
   .dependsOn(
     `autoscaling-ecs-core`,

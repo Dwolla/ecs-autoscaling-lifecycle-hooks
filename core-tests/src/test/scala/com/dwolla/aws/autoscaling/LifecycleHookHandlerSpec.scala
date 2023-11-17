@@ -1,4 +1,5 @@
-package com.dwolla.aws.autoscaling
+package com.dwolla.aws
+package autoscaling
 
 import _root_.io.circe.*
 import _root_.io.circe.literal.*
@@ -7,13 +8,14 @@ import cats.effect.*
 import cats.syntax.all.*
 import com.dwolla.aws
 import com.dwolla.aws.autoscaling.given
-import com.dwolla.aws.sns.{SnsTopicArn, given}
+import com.dwolla.aws.sns.given
 import feral.lambda.events.SnsEvent
 import feral.lambda.{Context, ContextInstances, LambdaEnv}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
+import com.amazonaws.sns.TopicARN
 
 class LifecycleHookHandlerSpec
   extends CatsEffectSuite
@@ -21,7 +23,7 @@ class LifecycleHookHandlerSpec
     with ContextInstances {
 
   given LoggerFactory[IO] = NoOpFactory[IO]
-  private def snsMessage[T: Encoder](topic: SnsTopicArn, detail: T, maybeSubject: Option[String]): Json =
+  private def snsMessage[T: Encoder](topic: TopicARN, detail: T, maybeSubject: Option[String]): Json =
     json"""{
              "Records": [
                {
@@ -66,14 +68,14 @@ class LifecycleHookHandlerSpec
            }"""
 
   test("LifecycleHookHandler should handle a message") {
-    forAllF { (arbSnsTopicArn: SnsTopicArn,
+    forAllF { (arbSnsTopicArn: TopicARN,
                arbContext: Context[IO],
                arbLifecycleHookNotification: LifecycleHookNotification,
                arbSubject: Option[String],
               ) =>
       for {
         deferredLifecycleHookNotification <- Deferred[IO, LifecycleHookNotification]
-        deferredSnsTopicArn <- Deferred[IO, SnsTopicArn]
+        deferredSnsTopicArn <- Deferred[IO, TopicARN]
 
         eventHandler = LifecycleHookHandler { case (arn, notif) =>
           deferredLifecycleHookNotification.complete(notif) >> 
@@ -94,7 +96,7 @@ class LifecycleHookHandlerSpec
   }
 
   test("LifecycleHookHandler should handle a test notification message") {
-    forAllF { (arbSnsTopicArn: SnsTopicArn,
+    forAllF { (arbSnsTopicArn: TopicARN,
                arbContext: Context[IO],
                arbSubject: Option[String],
               ) =>

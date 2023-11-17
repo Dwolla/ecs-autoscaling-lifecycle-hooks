@@ -24,7 +24,7 @@ class EcsAlgSpec
 
   given [F[_] : Applicative]: LoggerFactory[F] = NoOpFactory[F]
 
-  def fakeECS[F[_] : MonadThrow](arbCluster: ArbitraryCluster): ECS[F] = new FakeECS[F] {
+  def fakeECS(arbCluster: ArbitraryCluster): ECS[IO] = new ECS.Default[IO](new NotImplementedError().raiseError) {
     private lazy val listClustersResponses: Map[NextPageToken, ListClustersResponse] =
       ArbitraryPagination.paginateWith[Chunk, ArbitraryCluster, ClusterWithInstances, ClusterArn](arbCluster) {
           case ClusterWithInstances((c, _)) => c.clusterArn
@@ -111,7 +111,7 @@ class EcsAlgSpec
       }
 
     override def listClusters(nextToken: Option[String],
-                              maxResults: Option[BoxedInteger]): F[ListClustersResponse] =
+                              maxResults: Option[BoxedInteger]): IO[ListClustersResponse] =
       rejectParameters("listCluster")(maxResults.as("maxResults"))
         .as(listClustersResponses(NextPageToken(nextToken)))
 
@@ -119,7 +119,7 @@ class EcsAlgSpec
                                         filter: Option[String],
                                         nextToken: Option[String],
                                         maxResults: Option[BoxedInteger],
-                                        status: Option[com.amazonaws.ecs.ContainerInstanceStatus]): F[ListContainerInstancesResponse] =
+                                        status: Option[com.amazonaws.ecs.ContainerInstanceStatus]): IO[ListContainerInstancesResponse] =
       rejectParameters("listContainerInstances")(
         filter.as("filter"),
         maxResults.as("maxResults"),
@@ -133,20 +133,20 @@ class EcsAlgSpec
 
     override def describeContainerInstances(containerInstances: List[String],
                                             cluster: Option[String],
-                                            include: Option[List[ContainerInstanceField]]): F[DescribeContainerInstancesResponse] = {
+                                            include: Option[List[ContainerInstanceField]]): IO[DescribeContainerInstancesResponse] = {
       val requestedCluster = ClusterArn(cluster.getOrElse("default"))
       val allInstances = clusterMap.getOrElse(requestedCluster, List.empty)
       val cis: List[ContainerInstance] = allInstances.filter(i => containerInstances.contains(i.containerInstanceId.value))
 
-      DescribeContainerInstancesResponse(containerInstances = cis.map(ciToCi).some).pure[F]
+      DescribeContainerInstancesResponse(containerInstances = cis.map(ciToCi).some).pure[IO]
     }
 
     private def rejectParameters(method: String)
-                                (options: Option[String]*): F[Unit] =
+                                (options: Option[String]*): IO[Unit] =
       options
         .traverse(_.toInvalidNel(()))
         .leftMap(s => new RuntimeException(s"$method called with unimplemented parameters ${s.mkString_(", ")}"))
-        .liftTo[F]
+        .liftTo[IO]
         .void
 
     override def listTasks(cluster: Option[String],
@@ -157,7 +157,7 @@ class EcsAlgSpec
                            startedBy: Option[String],
                            serviceName: Option[String],
                            desiredStatus: Option[DesiredStatus],
-                           launchType: Option[LaunchType]): F[ListTasksResponse] =
+                           launchType: Option[LaunchType]): IO[ListTasksResponse] =
       rejectParameters("listTasks")(
         family.as("family"),
         maxResults.as("maxResults"),
@@ -173,7 +173,7 @@ class EcsAlgSpec
 
     override def describeTasks(tasks: List[String],
                                cluster: Option[String],
-                               include: Option[List[TaskField]]): F[DescribeTasksResponse] =
+                               include: Option[List[TaskField]]): IO[DescribeTasksResponse] =
       rejectParameters("describeTasks")(include.as("maxResults"))
         .as {
           val tasksSet = tasks.toSet
@@ -253,7 +253,7 @@ class EcsAlgSpec
         deferredContainerInstances <- Deferred[IO, List[ContainerInstanceId]]
         deferredStatus <- Deferred[IO, com.amazonaws.ecs.ContainerInstanceStatus]
         deferredCluster <- Deferred[IO, Option[ClusterArn]]
-        fakeEcsClient: ECS[IO] = new FakeECS[IO] {
+        fakeEcsClient: ECS[IO] = new ECS.Default[IO](new NotImplementedError().raiseError) {
               override def updateContainerInstancesState(containerInstances: List[String],
                                                          status: com.amazonaws.ecs.ContainerInstanceStatus,
                                                          cluster: Option[String]): IO[UpdateContainerInstancesStateResponse] =
@@ -278,7 +278,7 @@ class EcsAlgSpec
     forAllF { (cluster: ClusterArn, ci: ContainerInstance) =>
       val activeContainerInstance = ci.copy(status = ContainerInstanceStatus.Draining)
 
-      EcsAlg[IO](new FakeECS[IO] {}).drainInstance(cluster, activeContainerInstance)
+      EcsAlg[IO](new ECS.Default[IO](new NotImplementedError().raiseError)).drainInstance(cluster, activeContainerInstance)
     }
   }
 
@@ -301,7 +301,7 @@ class EcsAlgSpec
       val allTasks: Map[TaskArn, (TaskStatus, TaskDefinitionArn)] =
         allTaskPages.flatten.map { case (a, s, tda) => a -> (s, tda) }.toMap
 
-      val alg = EcsAlg(new FakeECS[IO] {
+      val alg = EcsAlg(new ECS.Default[IO](new NotImplementedError().raiseError) {
         override def listTasks(cluster: Option[String],
                                containerInstance: Option[String],
                                family: Option[String],
