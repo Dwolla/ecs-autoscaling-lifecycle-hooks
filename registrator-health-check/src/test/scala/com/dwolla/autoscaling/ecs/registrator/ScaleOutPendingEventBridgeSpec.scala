@@ -3,13 +3,16 @@ package com.dwolla.autoscaling.ecs.registrator
 import cats.*
 import cats.effect.*
 import cats.syntax.all.*
+import com.amazonaws.cloudformation.*
+import com.amazonaws.ec2.InstanceId
+import com.amazonaws.sns.TopicARN
 import com.dwolla.aws.autoscaling.AdvanceLifecycleHook.*
 import com.dwolla.aws.autoscaling.LifecycleState.PendingWait
 import com.dwolla.aws.autoscaling.{*, given}
 import com.dwolla.aws.cloudformation.{*, given}
 import com.dwolla.aws.ec2.*
 import com.dwolla.aws.ecs.{*, given}
-import com.dwolla.aws.sns.{SnsTopicArn, given}
+import com.dwolla.aws.sns.given
 import com.dwolla.aws.{*, given}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
@@ -19,7 +22,7 @@ class ScaleOutPendingEventBridgeSpec
     with ScalaCheckEffectSuite {
 
   test("ScaleOutPendingEventBridge continues autoscaling when Registrator is running on instance") {
-    forAllF { (arbTopic: SnsTopicArn,
+    forAllF { (arbTopic: TopicARN,
                arbLifecycleHook: LifecycleHookNotification,
                arbCluster: ClusterArn,
                arbContainerInstance: ContainerInstance,
@@ -29,9 +32,9 @@ class ScaleOutPendingEventBridgeSpec
                arbRegistratorStatus: Boolean,
               ) =>
       for {
-        deferredResult <- Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification, Option[LifecycleState])]
+        deferredResult <- Deferred[IO, (AdvanceLifecycleHook, Option[TopicARN], LifecycleHookNotification, Option[LifecycleState])]
         ecs = new TestEcsAlg {
-          override def findEc2Instance(ec2InstanceId: Ec2InstanceId): IO[Option[(ClusterArn, ContainerInstance)]] =
+          override def findEc2Instance(ec2InstanceId: InstanceId): IO[Option[(ClusterArn, ContainerInstance)]] =
             Option.when(ec2InstanceId == arbLifecycleHook.EC2InstanceId) {
               (arbCluster, arbContainerInstance)
             }.pure[IO]
@@ -68,7 +71,7 @@ class ScaleOutPendingEventBridgeSpec
   }
 
   test("ScaleOutPendingEventBridge pauses and recurses if EC2 instance isn't found in ECS cluster") {
-    forAllF { (arbTopic: SnsTopicArn,
+    forAllF { (arbTopic: TopicARN,
                arbLifecycleHook: LifecycleHookNotification,
                arbCluster: ClusterArn,
                arbContainerInstance: ContainerInstance,
@@ -77,9 +80,9 @@ class ScaleOutPendingEventBridgeSpec
                arbTags: List[Tag],
               ) =>
       for {
-        deferredResult <- Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification, Option[LifecycleState])]
+        deferredResult <- Deferred[IO, (AdvanceLifecycleHook, Option[TopicARN], LifecycleHookNotification, Option[LifecycleState])]
         ecs = new TestEcsAlg {
-          override def findEc2Instance(ec2InstanceId: Ec2InstanceId): IO[Option[(ClusterArn, ContainerInstance)]] =
+          override def findEc2Instance(ec2InstanceId: InstanceId): IO[Option[(ClusterArn, ContainerInstance)]] =
             none[(ClusterArn, ContainerInstance)].pure[IO]
         }
         autoscaling = new FakeAutoScalingAlgThatCapturesMethodParameters(deferredResult)
@@ -103,7 +106,7 @@ class FakeEc2AlgThatReturnsArbitraryTagsWithCloudFormationStackIdTag(arbLifecycl
                                                                      arbStackArn: StackArn,
                                                                      arbTags: List[Tag],
                                                                     ) extends TestEc2Alg {
-  override def getTagsForInstance(id: Ec2InstanceId): IO[List[Tag]] =
+  override def getTagsForInstance(id: InstanceId): IO[List[Tag]] =
     IO.pure {
       if (id == arbLifecycleHook.EC2InstanceId) arbTags ++ List(
         Tag(TagName("aws:cloudformation:stack-id"), TagValue(arbStackArn.value)),
@@ -112,8 +115,8 @@ class FakeEc2AlgThatReturnsArbitraryTagsWithCloudFormationStackIdTag(arbLifecycl
     }
 }
 
-class FakeAutoScalingAlgThatCapturesMethodParameters(deferredResult: Deferred[IO, (AdvanceLifecycleHook, Option[SnsTopicArn], LifecycleHookNotification, Option[LifecycleState])]) extends TestAutoScalingAlg {
-  override def pauseAndRecurse(topic: SnsTopicArn, 
+class FakeAutoScalingAlgThatCapturesMethodParameters(deferredResult: Deferred[IO, (AdvanceLifecycleHook, Option[TopicARN], LifecycleHookNotification, Option[LifecycleState])]) extends TestAutoScalingAlg {
+  override def pauseAndRecurse(topic: TopicARN,
                                lifecycleHookNotification: LifecycleHookNotification,
                                onlyIfInState: LifecycleState,
                               ): IO[Unit] =

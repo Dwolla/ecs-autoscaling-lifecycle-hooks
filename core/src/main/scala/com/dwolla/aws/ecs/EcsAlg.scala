@@ -2,8 +2,8 @@ package com.dwolla.aws.ecs
 
 import cats.*
 import cats.syntax.all.*
+import com.amazonaws.ec2.InstanceId
 import com.amazonaws.ecs.ECS
-import com.dwolla.aws.ec2.*
 import com.dwolla.aws.ecs.*
 import com.dwolla.aws.ecs.TaskStatus.{Running, stoppedTaskStatuses}
 import com.dwolla.fs2utils.Pagination
@@ -14,7 +14,7 @@ import org.typelevel.log4cats.{Logger, LoggerFactory}
 abstract class EcsAlg[F[_] : Applicative, G[_]] {
   def listClusterArns: G[ClusterArn]
   def listContainerInstances(cluster: ClusterArn): G[ContainerInstance]
-  def findEc2Instance(ec2InstanceId: Ec2InstanceId): F[Option[(ClusterArn, ContainerInstance)]]
+  def findEc2Instance(ec2InstanceId: InstanceId): F[Option[(ClusterArn, ContainerInstance)]]
   def drainInstance(cluster: ClusterArn, ci: ContainerInstance): F[Unit] =
     drainInstanceImpl(cluster, ci).unlessA(ci.status == ContainerInstanceStatus.Draining)
 
@@ -49,7 +49,7 @@ object EcsAlg {
         .through(chunkedEcsRequest(ecs.describeContainerInstances(_, cluster = cluster.value.some))(_.containerInstances))
         .map { ci =>
           (ci.containerInstanceArn.map(ContainerInstanceId(_)),
-            ci.ec2InstanceId.map(Ec2InstanceId(_)),
+            ci.ec2InstanceId.map(InstanceId(_)),
             ci.status.flatMap(ContainerInstanceStatus.fromStatus),
           )
             .tupled
@@ -78,7 +78,7 @@ object EcsAlg {
         .map(extract(_).toChunk)
         .unchunks
 
-    override def findEc2Instance(ec2InstanceId: Ec2InstanceId): F[Option[(ClusterArn, ContainerInstance)]] =
+    override def findEc2Instance(ec2InstanceId: InstanceId): F[Option[(ClusterArn, ContainerInstance)]] =
       LoggerFactory[F].create.flatMap { case given Logger[F] =>
         listClusterArns
           // TODO listContainerInstances could use a CQL expression to narrow the search

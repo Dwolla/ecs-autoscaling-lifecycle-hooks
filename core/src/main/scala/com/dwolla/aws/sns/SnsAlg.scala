@@ -1,31 +1,20 @@
 package com.dwolla.aws.sns
 
-import cats.effect.*
+import cats.*
 import cats.syntax.all.*
-import software.amazon.awssdk.services.sns.SnsAsyncClient
 import org.typelevel.log4cats.*
-import software.amazon.awssdk.services.sns.model.PublishRequest
+import com.amazonaws.sns.*
 
 trait SnsAlg[F[_]] {
-  def publish(topic: SnsTopicArn, message: String): F[Unit]
+  def publish(topic: TopicARN, message: Message): F[Unit]
 }
 
 object SnsAlg {
-  def apply[F[_] : Async : LoggerFactory](client: SnsAsyncClient): SnsAlg[F] = new SnsAlg[F] {
-    override def publish(topic: SnsTopicArn, message: String): F[Unit] =
+  def apply[F[_] : Monad : LoggerFactory](client: SNS[F]): SnsAlg[F] = new SnsAlg[F] {
+    override def publish(topic: TopicARN, message: Message): F[Unit] =
       LoggerFactory[F].create.flatMap { case given Logger[F] =>
-        val req = PublishRequest.builder()
-          .topicArn(topic.value)
-          .message(message)
-          .build()
-
-        Logger[F].trace(s"Publishing message to $topic") >>
-          Async[F]
-            .fromCompletableFuture {
-              Sync[F].delay(client.publish(req))
-            }
-            .void
+        Logger[F].trace(s"Publishing message to $topic") *>
+          client.publish(message, topic.some).void
       }
-
   }
 }

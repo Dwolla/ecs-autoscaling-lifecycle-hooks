@@ -2,15 +2,15 @@ package com.dwolla.autoscaling.ecs.registrator
 
 import cats.*
 import cats.syntax.all.*
+import com.amazonaws.cloudformation.LogicalResourceId
+import com.amazonaws.sns.TopicARN
 import com.dwolla.aws.*
 import com.dwolla.aws.autoscaling.*
 import com.dwolla.aws.autoscaling.AdvanceLifecycleHook.*
 import com.dwolla.aws.autoscaling.LifecycleState.*
 import com.dwolla.aws.cloudformation.*
 import com.dwolla.aws.ec2.Ec2Alg
-import com.dwolla.aws.ecs.EcsAlg
 import com.dwolla.aws.ecs.*
-import com.dwolla.aws.sns.SnsTopicArn
 import mouse.all.*
 
 class ScaleOutPendingEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G],
@@ -18,7 +18,7 @@ class ScaleOutPendingEventBridge[F[_] : Monad, G[_]](ECS: EcsAlg[F, G],
                                                      EC2: Ec2Alg[F],
                                                      Cfn: CloudFormationAlg[F],
                                                     ) {
-  def apply(topic: SnsTopicArn, lifecycleHook: LifecycleHookNotification): F[Unit] =
+  def apply(topic: TopicARN, lifecycleHook: LifecycleHookNotification): F[Unit] =
     ECS.findEc2Instance(lifecycleHook.EC2InstanceId)
       .liftOptionT
       .mproduct { case (cluster, ContainerInstance(containerInstanceId, ec2InstanceId, _, _)) =>
@@ -49,7 +49,7 @@ object ScaleOutPendingEventBridge {
                                 autoScalingAlg: AutoScalingAlg[F],
                                 ec2Alg: Ec2Alg[F],
                                 cloudFormationAlg: CloudFormationAlg[F],
-                               ): (SnsTopicArn, LifecycleHookNotification) => F[Unit] =
+                               ): (TopicARN, LifecycleHookNotification) => F[Unit] =
     new ScaleOutPendingEventBridge(ecsAlg, autoScalingAlg, ec2Alg, cloudFormationAlg).apply
 }
 

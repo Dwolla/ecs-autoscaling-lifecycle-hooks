@@ -1,19 +1,17 @@
 package com.dwolla.aws.cloudformation
 
 import cats.effect.*
-import cats.effect.std.Dispatcher
-import com.dwolla.aws
+import cats.syntax.all.*
+import com.amazonaws.cloudformation.*
 import com.dwolla.aws.cloudformation.given
+import com.dwolla.aws.given
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.Arbitrary
 import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
-import software.amazon.awssdk.services.cloudformation.CloudFormationAsyncClient
-import software.amazon.awssdk.services.cloudformation.model.{CloudFormationException, DescribeStackResourceRequest, DescribeStackResourceResponse, StackResourceDetail}
-
-import java.util.concurrent.CompletableFuture
-import scala.jdk.CollectionConverters.*
+import smithy4s.Timestamp
+import smithy4s.http.UnknownErrorResponse
 
 class CloudFormationAlgSpec
   extends CatsEffectSuite
@@ -22,53 +20,42 @@ class CloudFormationAlgSpec
   given LoggerFactory[IO] = NoOpFactory[IO]
 
   test("CloudFormationAlg should return the physical resource ID for the given parameters, if it can") {
-    forAllF { (stack: StackArn,
-               logicalResourceId: LogicalResourceId,
+    forAllF { (arbStack: StackArn,
+               arbLogicalResourceId: LogicalResourceId,
                maybePhysicalResourceId: Option[PhysicalResourceId],
+               resourceType: ResourceType,
+               timestamp: Timestamp,
+               resourceStatus: ResourceStatus,
               ) =>
-      Dispatcher.sequential[IO].use { dispatcher =>
-        val cfn = new CloudFormationAsyncClient {
-          override def serviceName(): String = "FakeCloudFormationAsyncClient"
-          override def close(): Unit = ()
-
-          override def describeStackResource(req: DescribeStackResourceRequest): CompletableFuture[DescribeStackResourceResponse] =
-            dispatcher.unsafeToCompletableFuture {
-              if (req.stackName() == stack.value && req.logicalResourceId() == logicalResourceId.value) {
-                maybePhysicalResourceId
-                  .fold {
-                    IO.raiseError[DescribeStackResourceResponse] {
-                      CloudFormationException.builder()
-                        .message(s"Resource ${logicalResourceId.value} does not exist for stack ${stack.value}")
-                        .build()
-                    }
-                  } { physicalResourceId =>
-                    IO.pure {
-                      DescribeStackResourceResponse.builder()
-                        .stackResourceDetail {
-                          StackResourceDetail.builder()
-                            .stackId(stack.value)
-                            .logicalResourceId(logicalResourceId.value)
-                            .physicalResourceId(physicalResourceId.value)
-                            .build()
-                        }
-                        .build()
-                    }
-                  }
-              } else {
-                IO.raiseError[DescribeStackResourceResponse] {
-                  CloudFormationException.builder()
-                    .message(s"Stack '${stack.value}' does not exist")
-                    .build()
-                }
-              }
+      val cfn = new CloudFormation.Default[IO](new NotImplementedError().raiseError) {
+        override def describeStackResources(stackName: Option[StackName],
+                                            logicalResourceId: Option[LogicalResourceId],
+                                            physicalResourceId: Option[PhysicalResourceId]): IO[DescribeStackResourcesOutput] = {
+          if (stackName.exists(_.value == arbStack.value) && logicalResourceId.exists(_.value == arbLogicalResourceId.value)) {
+            maybePhysicalResourceId
+              .fold {
+                DescribeStackResourcesOutput(None)
+              } { physicalResourceId =>
+                DescribeStackResourcesOutput(StackResource(
+                  logicalResourceId = arbLogicalResourceId,
+                  resourceType = resourceType,
+                  timestamp = timestamp,
+                  resourceStatus = resourceStatus,
+                  stackId = StackId(arbStack.value).some,
+                  physicalResourceId = physicalResourceId.some,
+                ).pure[List].some)
+              }.pure[IO]
+          } else
+            IO.raiseError[DescribeStackResourcesOutput] {
+              UnknownErrorResponse(400, Map.empty, s"Stack with id ${arbStack.value} does not exist")
             }
         }
+      }
 
-        for {
-          output <- CloudFormationAlg[IO](cfn).physicalResourceIdFor(stack, logicalResourceId)
-        } yield {
-          assertEquals(output, maybePhysicalResourceId)
-        }
+      for {
+        output <- CloudFormationAlg[IO](cfn).physicalResourceIdFor(arbStack, arbLogicalResourceId)
+      } yield {
+        assertEquals(output, maybePhysicalResourceId)
       }
     }
   }

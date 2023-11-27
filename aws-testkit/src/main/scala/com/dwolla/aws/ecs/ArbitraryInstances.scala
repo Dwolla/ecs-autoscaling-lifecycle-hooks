@@ -1,21 +1,23 @@
 package com.dwolla.aws.ecs
 
 import cats.syntax.all.*
-import com.dwolla.aws.{AccountId, given}
-import com.dwolla.aws.ec2.{Ec2InstanceId, given}
+import com.amazonaws.ec2.InstanceId
 import com.dwolla.RandomChunks
+import com.dwolla.aws.ec2.given
 import com.dwolla.aws.ecs.TaskStatus.stoppedTaskStatuses
+import com.dwolla.aws.{AccountId, given}
 import fs2.{Chunk, Pure, Stream}
 import monix.newtypes.NewtypeWrapped
 import org.scalacheck.*
 import org.scalacheck.Arbitrary.arbitrary
+import smithy4s.aws.AwsRegion
+import smithy4s.aws.kernel.AwsRegion.{AF_SOUTH_1, AP_EAST_1, AP_NORTHEAST_1, AP_NORTHEAST_2, AP_NORTHEAST_3, AP_SOUTHEAST_1, AP_SOUTHEAST_2, AP_SOUTH_1, CA_CENTRAL_1, CN_NORTHWEST_1, CN_NORTH_1, EU_CENTRAL_1, EU_NORTH_1, EU_SOUTH_1, EU_WEST_1, EU_WEST_2, EU_WEST_3, GovCloud, ME_SOUTH_1, SA_EAST_1, US_EAST_1, US_EAST_2, US_GOV_EAST_1, US_ISOB_EAST_1, US_ISO_EAST_1, US_ISO_WEST_1, US_WEST_1, US_WEST_2}
 
 import java.util.UUID
-import scala.jdk.CollectionConverters.*
 
 case class TaskArnAndStatus(arn: TaskArn, status: TaskStatus)
 case class ContainerInstanceWithTaskPages(containerInstanceId: ContainerInstanceId,
-                                          ec2InstanceId: Ec2InstanceId,
+                                          ec2InstanceId: InstanceId,
                                           tasks: List[Chunk[TaskArnAndStatus]],
                                           status: ContainerInstanceStatus,
                                          ) {
@@ -43,8 +45,37 @@ object ClusterWithInstances extends NewtypeWrapped[(Cluster, List[Chunk[Containe
 type TasksForContainerInstance = TasksForContainerInstance.Type
 object TasksForContainerInstance extends NewtypeWrapped[List[Chunk[TaskArnAndStatus]]]
 
-def genRegion: Gen[Region] = Gen.oneOf(software.amazon.awssdk.regions.Region.regions().asScala).map(x => Region(x.id()))
-given Arbitrary[Region] = Arbitrary(genRegion)
+def genRegion: Gen[AwsRegion] = Gen.oneOf(
+  AF_SOUTH_1,
+  AP_EAST_1,
+  AP_NORTHEAST_1,
+  AP_NORTHEAST_2,
+  AP_NORTHEAST_3,
+  AP_SOUTH_1,
+  AP_SOUTHEAST_1,
+  AP_SOUTHEAST_2,
+  CA_CENTRAL_1,
+  CN_NORTH_1,
+  CN_NORTHWEST_1,
+  EU_CENTRAL_1,
+  EU_NORTH_1,
+  EU_SOUTH_1,
+  EU_WEST_1,
+  EU_WEST_2,
+  EU_WEST_3,
+  GovCloud,
+  ME_SOUTH_1,
+  SA_EAST_1,
+  US_EAST_1,
+  US_EAST_2,
+  US_GOV_EAST_1,
+  US_ISO_EAST_1,
+  US_ISO_WEST_1,
+  US_ISOB_EAST_1,
+  US_WEST_1,
+  US_WEST_2,
+)
+given Arbitrary[AwsRegion] = Arbitrary(genRegion)
 
 def genContainerInstanceStatus: Gen[ContainerInstanceStatus] = Gen.oneOf(ContainerInstanceStatus.Active, ContainerInstanceStatus.Draining, ContainerInstanceStatus.Inactive)
 given Arbitrary[ContainerInstanceStatus] = Arbitrary(genContainerInstanceStatus)
@@ -52,7 +83,7 @@ given Arbitrary[ContainerInstanceStatus] = Arbitrary(genContainerInstanceStatus)
 def genContainerInstanceWithTaskPages: Gen[ContainerInstanceWithTaskPages] =
   for {
     cId <- arbitrary[ContainerInstanceId]
-    ec2Id <- arbitrary[Ec2InstanceId]
+    ec2Id <- arbitrary[InstanceId]
     taskCount <- arbitrary[TasksForContainerInstance]
     status <- arbitrary[ContainerInstanceStatus]
   } yield ContainerInstanceWithTaskPages(cId, ec2Id, taskCount.value, status)
@@ -115,7 +146,7 @@ given Arbitrary[ContainerInstanceId] = Arbitrary(genContainerInstanceId)
 
 def genCluster: Gen[Cluster] =
   for {
-    region <- arbitrary[Region]
+    region <- arbitrary[AwsRegion]
     accountId <- arbitrary[AccountId]
     clusterName <- arbitrary[ClusterName]
   } yield Cluster(region, accountId, clusterName)

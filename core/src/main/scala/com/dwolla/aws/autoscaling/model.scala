@@ -1,9 +1,11 @@
-package com.dwolla.aws.autoscaling
+package com.dwolla.aws
+package autoscaling
 
 import cats.FlatMap
 import cats.syntax.all.*
+import com.amazonaws.autoscaling.*
+import com.amazonaws.ec2.*
 import com.dwolla.aws.AccountId
-import com.dwolla.aws.ec2.Ec2InstanceId
 import io.circe.*
 import monix.newtypes.NewtypeWrapped
 import monix.newtypes.integrations.*
@@ -11,13 +13,10 @@ import monix.newtypes.integrations.*
 import java.time.Instant
 
 type AutoScalingGroupName = AutoScalingGroupName.Type
-object AutoScalingGroupName extends NewtypeWrapped[String]
+object AutoScalingGroupName extends NewtypeWrapped[ResourceName]
 
 type LifecycleHookName = LifecycleHookName.Type
-object LifecycleHookName extends NewtypeWrapped[String]
-
-type LifecycleTransition = LifecycleTransition.Type
-object LifecycleTransition extends NewtypeWrapped[String]
+object LifecycleHookName extends NewtypeWrapped[AsciiStringMaxLen255]
 
 sealed trait AutoScalingSnsMessage
 case class LifecycleHookNotification(service: String,
@@ -27,7 +26,7 @@ case class LifecycleHookNotification(service: String,
                                      accountId: AccountId,
                                      autoScalingGroupName: AutoScalingGroupName,
                                      lifecycleHookName: LifecycleHookName,
-                                     EC2InstanceId: Ec2InstanceId,
+                                     EC2InstanceId: InstanceId,
                                      lifecycleTransition: LifecycleTransition,
                                      notificationMetadata: Option[String],
                                     ) extends AutoScalingSnsMessage
