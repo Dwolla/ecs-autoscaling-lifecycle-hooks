@@ -67,8 +67,12 @@ lazy val `autoscaling-ecs-core`: Project = project
         "io.circe" %% "circe-parser" % "0.14.6",
         "io.monix" %% "newtypes-core" % "0.2.3",
         "io.monix" %% "newtypes-circe-v0-14" % "0.2.3",
+        "org.tpolecat" %% "natchez-core" % "0.3.4",
+        "org.typelevel" %% "cats-tagless-core" % "0.15.0",
+        "org.typelevel" %% "alleycats-core" % "2.10.0",
+        "com.dwolla" %% "natchez-tagless" % "0.2.4",
       )
-    }
+    },
   )
   .dependsOn(
     `smithy4s-generated`,
@@ -86,6 +90,7 @@ lazy val `core-tests` = project
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
         "org.typelevel" %% "log4cats-noop" % "2.6.0" % Test,
         "org.typelevel" %% "mouse" % "1.2.2" % Test,
+        "org.tpolecat" %% "natchez-noop" % "0.3.4" % Test,
         "io.circe" %% "circe-literal" % "0.14.6" % Test,
         "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "com.47deg" %% "scalacheck-toolbox-datetime" % "0.7.0" % Test exclude("joda-time", "joda-time"),
@@ -110,6 +115,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
         "org.typelevel" %% "feral-lambda" % "0.2.4",
         "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
         "org.http4s" %% "http4s-ember-client" % "0.23.24",
+        "org.tpolecat" %% "natchez-xray" % "0.3.4",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Runtime,
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.22.0" % Runtime,
         "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
@@ -120,6 +126,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
         "io.circe" %% "circe-literal" % "0.14.6" % Test,
         "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
+        "com.dwolla" %% "dwolla-otel-natchez" % "0.2.2" % Test,
       )
     },
     topLevelDirectory := None,
@@ -144,6 +151,7 @@ lazy val `registrator-health-check-lambda` = project
         "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
         "org.http4s" %% "http4s-ember-client" % "0.23.21",
         "org.typelevel" %% "mouse" % "1.2.2",
+        "org.tpolecat" %% "natchez-xray" % "0.3.4",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Runtime,
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.22.0" % Runtime,
         "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
