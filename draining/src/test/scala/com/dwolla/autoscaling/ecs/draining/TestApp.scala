@@ -3,33 +3,45 @@ package com.dwolla.autoscaling.ecs.draining
 import cats.*
 import cats.effect.*
 import cats.effect.std.Console
+import cats.mtl.Local
 import cats.syntax.all.*
 import com.amazonaws.ecs.ECS
-import com.dwolla.aws.ecs.EcsAlg
+import com.dwolla.aws.ecs.{EcsAlg, given}
+import com.dwolla.tracing.mtl.LocalSpan
+import com.dwolla.tracing.syntax.*
+import com.dwolla.tracing.{DwollaEnvironment, OpenTelemetryAtDwolla}
 import fs2.Stream
+import natchez.Span
+import natchez.mtl.given
 import org.http4s.ember.client.EmberClientBuilder
 import org.typelevel.log4cats.*
 import smithy4s.aws.*
 import smithy4s.aws.kernel.AwsRegion
 
-object TestApp extends IOApp.Simple {
-  override def run: IO[Unit] =
-    Stream.resource {
-      for {
-        client <- EmberClientBuilder.default[IO].build
-        given LoggerFactory[IO] = new ConsoleLogger[IO]
-        awsEnv <- AwsEnvironment.default(client, AwsRegion.US_WEST_2)
-        ecs <- AwsClient(ECS, awsEnv).map(EcsAlg(_))
-      } yield ecs
-    }
-      .flatMap { ecs =>
-        ecs.listClusterArns
-          .filter(_.value.contains("Production"))
-          .flatMap(ecs.listContainerInstances)
+object TestApp extends ResourceApp.Simple {
+  override def run: Resource[IO, Unit] =
+    OpenTelemetryAtDwolla[IO]("ecs-autoscaling-draining-hook", DwollaEnvironment.Local)
+      .flatMap(_.root("ECS Test App"))
+      .evalMap(LocalSpan(_))
+      .evalMap { case given Local[IO, Span[IO]] =>
+        Stream.resource {
+            for {
+              client <- EmberClientBuilder.default[IO].build
+              given LoggerFactory[IO] = new ConsoleLogger[IO]
+              awsEnv <- AwsEnvironment.default(client, AwsRegion.US_WEST_2)
+              ecs <- AwsClient(ECS, awsEnv).map(_.traceWithInputsAndOutputs).map(EcsAlg(_))
+            } yield ecs
+          }
+          .flatMap { ecs =>
+            ecs.listClusterArns
+              .filter(_.value.contains("Production"))
+              .flatMap(ecs.listContainerInstances)
+          }
+          .evalMap(c => IO.println(c))
+          .compile
+          .drain
       }
-      .evalMap(c => IO.println(c))
-      .compile
-      .drain
+
 }
 
 class ConsoleLogger[F[_] : Applicative : Console] extends LoggerFactory[F] {

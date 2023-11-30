@@ -1,14 +1,20 @@
-package com.dwolla.aws.autoscaling
+package com.dwolla.aws
+package autoscaling
 
-import cats.effect.*
+import cats.*
 import cats.effect.syntax.all.*
+import cats.effect.{Trace as _, *}
 import cats.syntax.all.*
+import cats.tagless.Trivial
+import cats.tagless.aop.Aspect
 import com.amazonaws.autoscaling.{AutoScaling, LifecycleActionResult, XmlStringMaxLen19}
 import com.amazonaws.ec2.InstanceId
 import com.amazonaws.sns.*
+import com.dwolla.aws.TraceableValueInstances.given
 import com.dwolla.aws.autoscaling.LifecycleState.*
 import com.dwolla.aws.sns.*
 import io.circe.syntax.*
+import natchez.TraceableValue
 import org.typelevel.log4cats.{Logger, LoggerFactory}
 
 import scala.concurrent.duration.*
@@ -22,6 +28,40 @@ trait AutoScalingAlg[F[_]] {
 }
 
 object AutoScalingAlg {
+  given Aspect[AutoScalingAlg, TraceableValue, Trivial] = new Aspect[AutoScalingAlg, TraceableValue, Trivial] {
+    override def weave[F[_]](af: AutoScalingAlg[F]): AutoScalingAlg[[A] =>> Aspect.Weave[F, TraceableValue, Trivial, A]] =
+      new AutoScalingAlg[[A] =>> Aspect.Weave[F, TraceableValue, Trivial, A]] {
+        override def pauseAndRecurse(topic: TopicARN, lifecycleHookNotification: LifecycleHookNotification, onlyIfInState: LifecycleState): Aspect.Weave[F, TraceableValue, Trivial, Unit] =
+          new Aspect.Weave[F, TraceableValue, Trivial, Unit](
+            "AutoScalingAlg",
+            List(List(
+              Aspect.Advice.byValue[TraceableValue, TopicARN]("topic", topic),
+              Aspect.Advice.byValue[TraceableValue, LifecycleHookNotification]("lifecycleHookNotification", lifecycleHookNotification),
+              Aspect.Advice.byValue[TraceableValue, LifecycleState]("onlyIfInState", onlyIfInState),
+            )),
+            Aspect.Advice[F, Trivial, Unit]("pauseAndRecurse", af.pauseAndRecurse(topic, lifecycleHookNotification, onlyIfInState))
+          )
+
+        override def continueAutoScaling(l: LifecycleHookNotification): Aspect.Weave[F, TraceableValue, Trivial, Unit] =
+          new Aspect.Weave[F, TraceableValue, Trivial, Unit](
+            "AutoScalingAlg",
+            List(List(
+              Aspect.Advice.byValue[TraceableValue, LifecycleHookNotification]("l", l),
+            )),
+            Aspect.Advice[F, Trivial, Unit]("continueAutoScaling", af.continueAutoScaling(l))
+          )
+      }
+
+    override def mapK[F[_], G[_]](af: AutoScalingAlg[F])(fk: F ~> G): AutoScalingAlg[G] =
+      new AutoScalingAlg[G] {
+        override def pauseAndRecurse(topic: TopicARN, lifecycleHookNotification: LifecycleHookNotification, onlyIfInState: LifecycleState): G[Unit] =
+          fk(af.pauseAndRecurse(topic, lifecycleHookNotification, onlyIfInState))
+
+        override def continueAutoScaling(l: LifecycleHookNotification): G[Unit] =
+          fk(af.continueAutoScaling(l))
+      }
+  }
+
   def apply[F[_] : Async : LoggerFactory](autoScalingClient: AutoScaling[F],
                                           sns: SnsAlg[F]): AutoScalingAlg[F] =
     new AutoScalingAlgImpl(autoScalingClient, sns)
