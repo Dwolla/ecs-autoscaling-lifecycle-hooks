@@ -11,7 +11,6 @@ import com.dwolla.aws.ArbitraryPagination
 import com.dwolla.aws.ecs.*
 import fs2.{Chunk, Stream}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
-import natchez.Trace.Implicits.noop
 import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory

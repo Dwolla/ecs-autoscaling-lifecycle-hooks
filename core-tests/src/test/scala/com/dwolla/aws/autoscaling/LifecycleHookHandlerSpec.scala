@@ -5,7 +5,6 @@ import _root_.io.circe.*
 import _root_.io.circe.literal.*
 import _root_.io.circe.syntax.*
 import cats.effect.*
-import cats.mtl.Local
 import cats.syntax.all.*
 import com.dwolla.aws
 import com.dwolla.aws.autoscaling.given
@@ -17,9 +16,6 @@ import org.scalacheck.effect.PropF.forAllF
 import org.typelevel.log4cats.LoggerFactory
 import org.typelevel.log4cats.noop.NoOpFactory
 import com.amazonaws.sns.TopicARN
-import com.dwolla.tracing.mtl.LocalSpan
-import natchez.Span
-import natchez.noop.NoopEntrypoint
 
 class LifecycleHookHandlerSpec
   extends CatsEffectSuite
@@ -78,11 +74,10 @@ class LifecycleHookHandlerSpec
                arbSubject: Option[String],
               ) =>
       for {
-        given Local[IO, Span[IO]] <- LocalSpan()
         deferredLifecycleHookNotification <- Deferred[IO, LifecycleHookNotification]
         deferredSnsTopicArn <- Deferred[IO, TopicARN]
 
-        eventHandler = LifecycleHookHandler(NoopEntrypoint[IO](), "TestHook") { case (arn, notif) =>
+        eventHandler = LifecycleHookHandler { case (arn, notif) =>
           deferredLifecycleHookNotification.complete(notif) >> 
             deferredSnsTopicArn.complete(arn).void
         }
@@ -105,12 +100,12 @@ class LifecycleHookHandlerSpec
                arbContext: Context[IO],
                arbSubject: Option[String],
               ) =>
+      val eventHandler = LifecycleHookHandler { case (arn, notif) =>
+        IO(fail(s"TerminationEventHandler should not be called for test messages, but was called with $arn and $notif"))
+      }
+
       for {
-        given Local[IO, Span[IO]] <- LocalSpan()
         snsEvent <- snsMessage(arbSnsTopicArn, testNotification, arbSubject).as[SnsEvent].liftTo[IO]
-        eventHandler = LifecycleHookHandler(NoopEntrypoint[IO](), "TestHook") { case (arn, notif) =>
-          IO(fail(s"TerminationEventHandler should not be called for test messages, but was called with $arn and $notif"))
-        }
         output <- eventHandler(LambdaEnv.pure(snsEvent, arbContext))
       } yield {
         assertEquals(output, None)

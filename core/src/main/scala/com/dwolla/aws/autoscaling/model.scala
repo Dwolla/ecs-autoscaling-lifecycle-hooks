@@ -7,10 +7,8 @@ import com.amazonaws.autoscaling.*
 import com.amazonaws.ec2.*
 import com.dwolla.aws.AccountId
 import io.circe.*
-import io.circe.syntax.*
 import monix.newtypes.NewtypeWrapped
 import monix.newtypes.integrations.*
-import natchez.TraceableValue
 
 import java.time.Instant
 
@@ -80,8 +78,6 @@ object LifecycleHookNotification extends DerivedCirceCodec {
       "LifecycleTransition",
       "NotificationMetadata",
     )(LifecycleHookNotification.apply)
-
-  given TraceableValue[LifecycleHookNotification] = TraceableValue.stringToTraceValue.contramap(_.asJson.noSpaces)
 }
 object TestNotification extends DerivedCirceCodec {
   given Encoder[TestNotification] =
@@ -154,6 +150,4 @@ object LifecycleState {
   }
   
   def fromString(s: String): Option[LifecycleState] = maybeFromString.lift(s)
-
-  given TraceableValue[LifecycleState] = TraceableValue.stringToTraceValue.contramap(_.awsName)
 }
