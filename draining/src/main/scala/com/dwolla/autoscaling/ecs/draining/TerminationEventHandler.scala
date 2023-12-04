@@ -18,7 +18,7 @@ import natchez.Span
 import natchez.mtl.given
 import natchez.xray.XRay
 import org.http4s.ember.client.EmberClientBuilder
-import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.{Logger, LoggerFactory}
 import org.typelevel.log4cats.slf4j.Slf4jFactory
 import smithy4s.aws.*
 import smithy4s.aws.kernel.AwsRegion
@@ -37,5 +37,6 @@ class TerminationEventHandler extends IOLambda[SnsEvent, INothing] {
       sns <- AwsClient(SNS, awsEnv).map(SnsAlg[IO](_).traceWithInputs)
       autoscaling = AutoScalingAlg[IO](autoscalingClient, sns).traceWithInputs
       bridgeFunction = TerminationEventBridge(ecs, autoscaling)
+      given Logger[IO] <- LoggerFactory[IO].create.toResource
     } yield LifecycleHookHandler(entryPoint, "TerminationEventHandler")(bridgeFunction)
 }

@@ -14,8 +14,8 @@ import feral.lambda.events.SnsEvent
 import feral.lambda.{Context, ContextInstances, LambdaEnv}
 import munit.{CatsEffectSuite, ScalaCheckEffectSuite}
 import org.scalacheck.effect.PropF.forAllF
-import org.typelevel.log4cats.LoggerFactory
-import org.typelevel.log4cats.noop.NoOpFactory
+import org.typelevel.log4cats.{Logger, LoggerFactory}
+import org.typelevel.log4cats.noop.{NoOpFactory, NoOpLogger}
 import com.amazonaws.sns.TopicARN
 import com.dwolla.tracing.mtl.LocalSpan
 import natchez.Span
@@ -27,6 +27,8 @@ class LifecycleHookHandlerSpec
     with ContextInstances {
 
   given LoggerFactory[IO] = NoOpFactory[IO]
+  given Logger[IO] = NoOpLogger[IO]
+
   private def snsMessage[T: Encoder](topic: TopicARN, detail: T, maybeSubject: Option[String]): Json =
     json"""{
              "Records": [

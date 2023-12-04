@@ -22,7 +22,7 @@ import natchez.mtl.given
 import natchez.xray.XRay
 import natchez.Span
 import org.http4s.ember.client.EmberClientBuilder
-import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.{Logger, LoggerFactory}
 import org.typelevel.log4cats.slf4j.Slf4jFactory
 import smithy4s.aws.*
 import smithy4s.aws.kernel.AwsRegion
@@ -43,5 +43,6 @@ class ScaleOutPendingEventHandler extends IOLambda[SnsEvent, INothing] {
       cloudformationClient <- AwsClient(CloudFormation, awsEnv).map(CloudFormationAlg[IO](_))
       autoscaling = AutoScalingAlg[IO](autoscalingClient, sns)
       bridgeFunction = ScaleOutPendingEventBridge(ecs, autoscaling, ec2Client, cloudformationClient)
+      given Logger[IO] <- LoggerFactory[IO].create.toResource
     } yield LifecycleHookHandler(entryPoint, "ScaleOutPendingEventHandler")(bridgeFunction)
 }

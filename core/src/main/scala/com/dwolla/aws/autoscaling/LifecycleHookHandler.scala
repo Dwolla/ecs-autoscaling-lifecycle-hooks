@@ -10,13 +10,13 @@ import feral.lambda.events.SnsEvent
 import feral.lambda.{INothing, LambdaEnv}
 import fs2.Stream
 import natchez.{EntryPoint, Span}
-import org.typelevel.log4cats.LoggerFactory
+import org.typelevel.log4cats.{Logger, LoggerFactory}
 import com.dwolla.tracing.syntax.*
 
 object LifecycleHookHandler {
-  def apply[F[_] : MonadCancelThrow : LoggerFactory](entryPoint: EntryPoint[F], hookName: String)
-                                                    (eventBridge: (TopicARN, LifecycleHookNotification) => F[Unit])
-                                                    (using fs2.Compiler[F, F], Local[F, Span[F]]): LambdaEnv[F, SnsEvent] => F[Option[INothing]] = env =>
+  def apply[F[_] : MonadCancelThrow : LoggerFactory : Logger](entryPoint: EntryPoint[F], hookName: String)
+                                                             (eventBridge: (TopicARN, LifecycleHookNotification) => F[Unit])
+                                                             (using fs2.Compiler[F, F], Local[F, Span[F]]): LambdaEnv[F, SnsEvent] => F[Option[INothing]] = env =>
     entryPoint.runInRoot(hookName) {
       Stream.eval(env.event)
         .map(_.records)
