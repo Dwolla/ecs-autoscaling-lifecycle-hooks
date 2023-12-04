@@ -32,7 +32,7 @@ class TerminationEventHandler extends IOLambda[SnsEvent, INothing] {
       given Random[IO] <- Random.scalaUtilRandom[IO].toResource
       entryPoint <- XRay.entryPoint[IO]()
       awsEnv <- AwsEnvironment.default(client, AwsRegion.US_WEST_2)
-      ecs <- AwsClient(ECS, awsEnv).map(_.traceWithInputsAndOutputs).map(EcsAlg(_))
+      ecs <- AwsClient(ECS, awsEnv).map(_.traceWithInputs).map(EcsAlg(_))
       autoscalingClient <- AwsClient(AutoScaling, awsEnv)
       sns <- AwsClient(SNS, awsEnv).map(SnsAlg[IO](_).traceWithInputs)
       autoscaling = AutoScalingAlg[IO](autoscalingClient, sns).traceWithInputs
