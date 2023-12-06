@@ -4,6 +4,7 @@ import cats.*
 import cats.data.*
 import cats.effect.*
 import cats.syntax.all.*
+import com.amazonaws.ec2.InstanceId
 import com.amazonaws.ecs.ContainerInstanceStatus.DRAINING
 import com.amazonaws.ecs.{BoxedInteger, ContainerInstanceField, DescribeContainerInstancesResponse, DescribeTasksResponse, DesiredStatus, ECS, Failure, LaunchType, ListClustersResponse, ListContainerInstancesResponse, ListTasksResponse, Task, TaskField, UpdateContainerInstancesStateResponse, ContainerInstance as AwsContainerInstance}
 import com.dwolla.*
@@ -26,6 +27,7 @@ class EcsAlgSpec
   given [F[_] : Applicative]: LoggerFactory[F] = NoOpFactory[F]
 
   def fakeECS(arbCluster: ArbitraryCluster): ECS[IO] = new ECS.Default[IO](new NotImplementedError().raiseError) {
+    private val ec2InstanceIdCQL = """ec2InstanceId == (i-.+)""".r
     private lazy val listClustersResponses: Map[NextPageToken, ListClustersResponse] =
       ArbitraryPagination.paginateWith[Chunk, ArbitraryCluster, ClusterWithInstances, ClusterArn](arbCluster) {
           case ClusterWithInstances((c, _)) => c.clusterArn
@@ -37,17 +39,32 @@ class EcsAlgSpec
         }
         .toMap
 
-    private lazy val listContainerInstancesResponses: Map[Option[ClusterArn], Map[NextPageToken, ListContainerInstancesResponse]] =
+    private lazy val listContainerInstancesResponses: Map[Option[ClusterArn], Option[CQLQuery] => Map[NextPageToken, ListContainerInstancesResponse]] =
       arbCluster
         .value
         .flatMap(_.toList)
         .map { cwi =>
           val clusterArn: Option[ClusterArn] = cwi.value._1.clusterArn.some
-          val pages = ArbitraryPagination.paginate(cwi.value._2).view.mapValues {
-              case (c, n) =>
-                ListContainerInstancesResponse(c.map(_.containerInstanceId.value).toList.some, n.value)
+          val pages: Option[CQLQuery] => Map[NextPageToken, ListContainerInstancesResponse] = maybeQuery => {
+            val maybeInstanceId = maybeQuery.map(_.value).collect {
+              case ec2InstanceIdCQL(instanceId) => InstanceId(instanceId)
             }
-            .toMap
+            ArbitraryPagination.paginate(cwi.value._2).view.mapValues {
+                case (c, n) =>
+                  val containerInstances =
+                    c
+                      .filter { ciwtp =>
+                        // if incoming query is empty, return true
+                        // if incoming query matches ec2InstanceIdCQL regex and ciwtp contains a matching InstanceID, return true
+                        maybeQuery.isEmpty || maybeInstanceId.contains(ciwtp.ec2InstanceId.value)
+                      }
+                      .map(_.containerInstanceId.value)
+                      .toList
+                      .some
+                  ListContainerInstancesResponse(containerInstances, n.value)
+              }
+              .toMap
+          }
 
           clusterArn -> pages
         }
@@ -122,12 +139,12 @@ class EcsAlgSpec
                                         maxResults: Option[BoxedInteger],
                                         status: Option[com.amazonaws.ecs.ContainerInstanceStatus]): IO[ListContainerInstancesResponse] =
       rejectParameters("listContainerInstances")(
-        filter.as("filter"),
         maxResults.as("maxResults"),
         status.as("status"),
       ).as {
         listContainerInstancesResponses
           .get(cluster.map(ClusterArn(_)))
+          .map(_(filter.map(CQLQuery(_))))
           .flatMap(_.get(NextPageToken(nextToken)))
           .getOrElse(ListContainerInstancesResponse())
       }

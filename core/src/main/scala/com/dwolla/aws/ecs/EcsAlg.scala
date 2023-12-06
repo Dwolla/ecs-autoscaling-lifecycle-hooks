@@ -17,7 +17,9 @@ import com.dwolla.aws.TraceableValueInstances.given
 
 abstract class EcsAlg[F[_] : Applicative, G[_]] {
   def listClusterArns: G[ClusterArn]
-  def listContainerInstances(cluster: ClusterArn): G[ContainerInstance]
+  def listContainerInstances(cluster: ClusterArn,
+                             filter: Option[CQLQuery] = None,
+                            ): G[ContainerInstance]
   def findEc2Instance(ec2InstanceId: InstanceId): F[Option[(ClusterArn, ContainerInstance)]]
   def drainInstance(cluster: ClusterArn, ci: ContainerInstance): F[Unit] =
     drainInstanceImpl(cluster, ci).unlessA(ci.status == ContainerInstanceStatus.Draining)
@@ -44,12 +46,13 @@ object EcsAlg {
           .map(ClusterArn(_))
       }
 
-    override def listContainerInstances(cluster: ClusterArn): Stream[F, ContainerInstance] =
+    override def listContainerInstances(cluster: ClusterArn,
+                                        filter: Option[CQLQuery]): Stream[F, ContainerInstance] =
       Trace[Stream[F, *]].span("EcsAlg.listContainerInstances") {
         Trace[Stream[F, *]].put("cluster" -> cluster) >>
           Pagination.offsetUnfoldChunkEval { (nextToken: Option[String]) =>
               ecs
-                .listContainerInstances(cluster.value.some, nextToken = nextToken)
+                .listContainerInstances(cluster.value.some, nextToken = nextToken, filter = filter.map(_.value))
                 .map { resp =>
                   resp.containerInstanceArns.toChunk.map(ContainerInstanceId(_)) -> resp.nextToken
                 }
@@ -92,8 +95,7 @@ object EcsAlg {
         Trace[F].put("ec2InstanceId" -> ec2InstanceId) >>
           LoggerFactory[F].create.flatMap { case given Logger[F] =>
             listClusterArns
-              // TODO listContainerInstances could use a CQL expression to narrow the search
-              .mproduct(listContainerInstances(_).filter(_.ec2InstanceId == ec2InstanceId))
+              .mproduct(listContainerInstances(_, filter = CQLQuery(s"ec2InstanceId == $ec2InstanceId").some))
               .compile
               .last
               .flatTap { ec2Instance =>

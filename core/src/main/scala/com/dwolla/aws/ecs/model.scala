@@ -27,6 +27,9 @@ object TaskCount extends NewtypeWrapped[Long] {
   given Order[TaskCount] = Order[Long].contramap(_.value)
 }
 
+type CQLQuery = CQLQuery.Type
+object CQLQuery extends NewtypeWrapped[String]
+
 case class Cluster(region: AwsRegion, accountId: AccountId, name: ClusterName) {
   val clusterArn: ClusterArn = ClusterArn(s"arn:aws:ecs:$region:$accountId:cluster/$name")
 }

@@ -35,7 +35,7 @@ object TestApp extends ResourceApp.Simple {
           .flatMap { ecs =>
             ecs.listClusterArns
               .filter(_.value.contains("Production"))
-              .flatMap(ecs.listContainerInstances)
+              .flatMap(ecs.listContainerInstances(_))
           }
           .evalMap(c => IO.println(c))
           .compile
