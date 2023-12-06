@@ -13,6 +13,7 @@ stages:
         sbt test
         sbt doc
         sbt autoscaling-ecs-draining-lambda/Universal/packageBin
+        sbt registrator-health-check-lambda/Universal/packageBin
     filesToStash:
       - '**'
   deployProd:
