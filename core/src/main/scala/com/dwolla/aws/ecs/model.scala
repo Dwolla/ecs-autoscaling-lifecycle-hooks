@@ -117,7 +117,7 @@ object TaskStatus {
   }
 }
 
-def traceableAdvice[A: TraceableValue](name: String, a: A): Aspect.Advice[Eval, TraceableValue] =
+private def traceableAdvice[A: TraceableValue](name: String, a: A): Aspect.Advice[Eval, TraceableValue] =
   Aspect.Advice.byValue[TraceableValue, A](name, a)
 
 given Aspect[ECS, TraceableValue, TraceableValue] =

@@ -162,6 +162,7 @@ lazy val `registrator-health-check-lambda` = project
         "io.circe" %% "circe-literal" % "0.14.6" % Test,
         "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
+        "com.dwolla" %% "dwolla-otel-natchez" % "0.2.2" % Test,
       )
     },
     topLevelDirectory := None,

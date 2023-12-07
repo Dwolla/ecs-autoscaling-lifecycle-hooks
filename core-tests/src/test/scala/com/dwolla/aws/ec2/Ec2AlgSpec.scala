@@ -25,7 +25,6 @@ class Ec2AlgSpec
         .traverse { instanceId =>
           val fakeClient = new EC2.Default[IO](new NotImplementedError().raiseError) {
             override def describeInstances(dryRun: Boolean,
-                                           maxResults: Int,
                                            filters: Option[List[Filter]],
                                            instanceIds: Option[List[InstanceId]],
                                            nextToken: Option[String]): IO[DescribeInstancesResult] =
