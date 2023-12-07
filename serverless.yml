@@ -29,7 +29,7 @@ provider:
             - "ecs:ListTasks"
             - "ecs:DescribeTasks"
             - "ec2:DescribeInstances"
-            - "cloudformation:DescribeStackResource"
+            - "cloudformation:DescribeStackResources"
           Resource: "*"
           Effect: Allow
         - Sid: RepublishMessages
