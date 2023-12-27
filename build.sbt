@@ -96,7 +96,7 @@ lazy val `core-tests` = project
         "com.47deg" %% "scalacheck-toolbox-datetime" % "0.7.0" % Test exclude("joda-time", "joda-time"),
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Test,
-        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.21.1" % Test,
+        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.22.1" % Test,
       )
     },
     scalacOptions += "-language:adhocExtensions", // TODO see https://github.com/disneystreaming/smithy4s/issues/1307
@@ -117,7 +117,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
         "org.http4s" %% "http4s-ember-client" % "0.23.24",
         "org.tpolecat" %% "natchez-xray" % "0.3.5",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Runtime,
-        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.21.1" % Runtime,
+        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.22.1" % Runtime,
         "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
@@ -153,7 +153,7 @@ lazy val `registrator-health-check-lambda` = project
         "org.typelevel" %% "mouse" % "1.2.2",
         "org.tpolecat" %% "natchez-xray" % "0.3.5",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Runtime,
-        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.21.1" % Runtime,
+        "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.22.1" % Runtime,
         "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
