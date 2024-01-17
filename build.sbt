@@ -84,7 +84,7 @@ lazy val `core-tests` = project
     libraryDependencies ++= {
       Seq(
         "org.http4s" %% "http4s-ember-client" % "0.23.25" % Test,
-        "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
+        "org.typelevel" %% "cats-effect-testkit" % "3.5.3" % Test,
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
@@ -118,7 +118,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
         "org.tpolecat" %% "natchez-xray" % "0.3.5",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Runtime,
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.22.1" % Runtime,
-        "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
+        "org.typelevel" %% "cats-effect-testkit" % "3.5.3" % Test,
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
@@ -154,7 +154,7 @@ lazy val `registrator-health-check-lambda` = project
         "org.tpolecat" %% "natchez-xray" % "0.3.5",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Runtime,
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.22.1" % Runtime,
-        "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
+        "org.typelevel" %% "cats-effect-testkit" % "3.5.3" % Test,
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
