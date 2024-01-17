@@ -83,7 +83,7 @@ lazy val `core-tests` = project
   .settings(
     libraryDependencies ++= {
       Seq(
-        "org.http4s" %% "http4s-ember-client" % "0.23.24" % Test,
+        "org.http4s" %% "http4s-ember-client" % "0.23.25" % Test,
         "org.typelevel" %% "cats-effect-testkit" % "3.5.2" % Test,
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
@@ -114,7 +114,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
       Seq(
         "org.typelevel" %% "feral-lambda" % "0.2.4",
         "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
-        "org.http4s" %% "http4s-ember-client" % "0.23.24",
+        "org.http4s" %% "http4s-ember-client" % "0.23.25",
         "org.tpolecat" %% "natchez-xray" % "0.3.5",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Runtime,
         "org.apache.logging.log4j" % "log4j-slf4j-impl" % "2.22.1" % Runtime,
