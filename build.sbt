@@ -1,7 +1,7 @@
 ThisBuild / organization := "Dwolla"
 ThisBuild / homepage := Option(url("https://github.com/Dwolla/autoscaling-ecs-draining-lambda"))
 ThisBuild / tlCiDependencyGraphJob := false
-ThisBuild / scalaVersion := "3.3.1"
+ThisBuild / scalaVersion := "3.4.0"
 ThisBuild / tlJdkRelease := Option(17)
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("17"))
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(name = Option("Package"), commands = List("autoscaling-ecs-draining-lambda/Universal/packageBin"))
