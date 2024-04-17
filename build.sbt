@@ -184,7 +184,7 @@ lazy val `feral-testkit` = project
     libraryDependencies ++= {
       Seq(
         "org.typelevel" %% "feral-lambda" % "0.2.4",
-        "org.scalacheck" %% "scalacheck" % "1.17.0",
+        "org.scalacheck" %% "scalacheck" % "1.17.1",
         "io.circe" %% "circe-testing" % "0.14.6",
       )
     },
@@ -196,7 +196,7 @@ lazy val `aws-testkit` = project
     libraryDependencies ++= {
       Seq(
         "co.fs2" %% "fs2-core" % "3.9.4",
-        "org.scalacheck" %% "scalacheck" % "1.17.0",
+        "org.scalacheck" %% "scalacheck" % "1.17.1",
         "com.47deg" %% "scalacheck-toolbox-datetime" % "0.7.0" exclude("joda-time", "joda-time"),
       )
     },
