@@ -42,7 +42,7 @@ ThisBuild / scalacOptions += "-source:future"
 lazy val `smithy4s-preprocessors` = project
   .in(file("smithy4s-preprocessors"))
   .settings(
-    scalaVersion := "2.12.13", // 2.12 to match what SBT uses
+    scalaVersion := "2.12.19", // 2.12 for sbt plugins path; 2.12.18+ needed for JDK 21 (bridge compile / ASM)
     scalacOptions -= "-source:future",
     libraryDependencies ++= {
       Seq(
