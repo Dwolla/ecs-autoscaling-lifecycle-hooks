@@ -1,9 +1,35 @@
+import org.typelevel.sbt.gha.UseRef
+import org.typelevel.sbt.gha.WorkflowStep
+
 ThisBuild / organization := "Dwolla"
 ThisBuild / homepage := Option(url("https://github.com/Dwolla/autoscaling-ecs-draining-lambda"))
 ThisBuild / tlCiDependencyGraphJob := false
 ThisBuild / scalaVersion := "3.3.1"
 ThisBuild / tlJdkRelease := Option(21)
 ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("21"))
+/* ubuntu-latest runners do not ship `sbt`. SetupJava(..., enableCaching = true) injects `sbt +update`
+ * before we can install sbt — disable that prefetch and install sbt after JDK setup instead. */
+ThisBuild / githubWorkflowJobSetup := {
+  val autoCrlfOpt =
+    if ((ThisBuild / githubWorkflowOSes).value.exists(_.contains("windows"))) {
+      List(
+        WorkflowStep.Run(
+          commands = List("git config --global core.autocrlf false"),
+          name = Some("Ignore line ending differences in git"),
+          cond = Some("contains(runner.os, 'windows')"),
+        ))
+    } else Nil
+  val setupSbt = WorkflowStep.Use(
+    ref = UseRef.Public("sbt", "setup-sbt", "v1"),
+    name = Some("Setup sbt"),
+  )
+  autoCrlfOpt :::
+    List(WorkflowStep.CheckoutFull) :::
+    WorkflowStep.SetupJava(
+      (ThisBuild / githubWorkflowJavaVersions).value.toList,
+      enableCaching = false,
+    ) ::: List(setupSbt)
+}
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(name = Option("Package"), commands = List("autoscaling-ecs-draining-lambda/Universal/packageBin"))
 ThisBuild / mergifyRequiredJobs ++= Seq("validate-steward")
 ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
