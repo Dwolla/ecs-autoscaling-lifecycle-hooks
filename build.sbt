@@ -2,8 +2,8 @@ ThisBuild / organization := "Dwolla"
 ThisBuild / homepage := Option(url("https://github.com/Dwolla/autoscaling-ecs-draining-lambda"))
 ThisBuild / tlCiDependencyGraphJob := false
 ThisBuild / scalaVersion := "3.3.1"
-ThisBuild / tlJdkRelease := Option(17)
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("17"))
+ThisBuild / tlJdkRelease := Option(21)
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("21"))
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(name = Option("Package"), commands = List("autoscaling-ecs-draining-lambda/Universal/packageBin"))
 ThisBuild / mergifyRequiredJobs ++= Seq("validate-steward")
 ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
