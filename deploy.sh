@@ -43,7 +43,6 @@ echo "+ sdk env install use"
 sdk env install use
 
 set -o xtrace -o nounset -o pipefail
-npm install -g npm
-npm install -g serverless
+npm install -g serverless@3
 
 sbt "show deploy Admin"
