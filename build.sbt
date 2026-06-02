@@ -64,7 +64,7 @@ lazy val `autoscaling-ecs-core`: Project = project
       Seq(
         "com.dwolla" %% "fs2-utils" % "3.0.0-RC2",
         "org.typelevel" %% "feral-lambda" % "0.2.4",
-        "org.typelevel" %% "log4cats-core" % "2.6.0",
+        "org.typelevel" %% "log4cats-core" % "2.8.0",
         "io.circe" %% "circe-parser" % "0.14.6",
         "io.monix" %% "newtypes-core" % "0.2.3",
         "io.monix" %% "newtypes-circe-v0-14" % "0.2.3",
@@ -89,7 +89,7 @@ lazy val `core-tests` = project
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
-        "org.typelevel" %% "log4cats-noop" % "2.6.0" % Test,
+        "org.typelevel" %% "log4cats-noop" % "2.8.0" % Test,
         "org.typelevel" %% "mouse" % "1.2.2" % Test,
         "org.tpolecat" %% "natchez-noop" % "0.3.5" % Test,
         "io.circe" %% "circe-literal" % "0.14.6" % Test,
@@ -114,7 +114,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
     libraryDependencies ++= {
       Seq(
         "org.typelevel" %% "feral-lambda" % "0.2.4",
-        "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
+        "org.typelevel" %% "log4cats-slf4j" % "2.8.0",
         "org.http4s" %% "http4s-ember-client" % "0.23.25",
         "org.tpolecat" %% "natchez-xray" % "0.3.5",
         "com.amazonaws" % "aws-lambda-java-log4j2" % "1.6.0" % Runtime,
@@ -123,7 +123,7 @@ lazy val `autoscaling-ecs-draining-lambda` = project
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
-        "org.typelevel" %% "log4cats-noop" % "2.6.0" % Test,
+        "org.typelevel" %% "log4cats-noop" % "2.8.0" % Test,
         "io.circe" %% "circe-literal" % "0.14.6" % Test,
         "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
@@ -149,7 +149,7 @@ lazy val `registrator-health-check-lambda` = project
     libraryDependencies ++= {
       Seq(
         "org.typelevel" %% "feral-lambda" % "0.2.4",
-        "org.typelevel" %% "log4cats-slf4j" % "2.6.0",
+        "org.typelevel" %% "log4cats-slf4j" % "2.8.0",
         "org.http4s" %% "http4s-ember-client" % "0.23.21",
         "org.typelevel" %% "mouse" % "1.2.2",
         "org.tpolecat" %% "natchez-xray" % "0.3.5",
@@ -159,7 +159,7 @@ lazy val `registrator-health-check-lambda` = project
         "org.typelevel" %% "munit-cats-effect" % "2.0.0-M4" % Test,
         "org.scalameta" %% "munit-scalacheck" % "1.0.0-M10" % Test,
         "org.typelevel" %% "scalacheck-effect-munit" % "2.0.0-M2" % Test,
-        "org.typelevel" %% "log4cats-noop" % "2.6.0" % Test,
+        "org.typelevel" %% "log4cats-noop" % "2.8.0" % Test,
         "io.circe" %% "circe-literal" % "0.14.6" % Test,
         "io.circe" %% "circe-testing" % "0.14.6" % Test,
         "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2" % Test,
