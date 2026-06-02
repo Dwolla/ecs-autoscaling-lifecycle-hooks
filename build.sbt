@@ -69,7 +69,7 @@ lazy val `autoscaling-ecs-core`: Project = project
         "io.monix" %% "newtypes-core" % "0.2.3",
         "io.monix" %% "newtypes-circe-v0-14" % "0.2.3",
         "org.tpolecat" %% "natchez-core" % "0.3.5",
-        "org.typelevel" %% "cats-tagless-core" % "0.15.0",
+        "org.typelevel" %% "cats-tagless-core" % "0.16.5",
         "org.typelevel" %% "alleycats-core" % "2.10.0",
         "com.dwolla" %% "natchez-tagless" % "0.2.5",
       )
