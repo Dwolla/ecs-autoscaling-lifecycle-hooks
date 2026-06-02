@@ -1,22 +1,23 @@
+import org.typelevel.sbt.gha.WorkflowStep
+
 ThisBuild / organization := "Dwolla"
 ThisBuild / homepage := Option(url("https://github.com/Dwolla/autoscaling-ecs-draining-lambda"))
 ThisBuild / tlCiDependencyGraphJob := false
 ThisBuild / scalaVersion := "3.3.1"
-ThisBuild / tlJdkRelease := Option(17)
-ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("17"))
+ThisBuild / tlJdkRelease := Option(21)
+ThisBuild / githubWorkflowJavaVersions := Seq(JavaSpec.corretto("21"))
 ThisBuild / githubWorkflowBuild += WorkflowStep.Sbt(name = Option("Package"), commands = List("autoscaling-ecs-draining-lambda/Universal/packageBin"))
 ThisBuild / mergifyRequiredJobs ++= Seq("validate-steward")
-ThisBuild / mergifyStewardConfig ~= { _.map(_.copy(
-  author = "dwolla-oss-scala-steward[bot]",
-  mergeMinors = true,
-))}
+ThisBuild / mergifyStewardConfig ~= {
+  _.map(_.withMergeMinors(true).withAuthor("dwolla-oss-scala-steward[bot]"))
+}
 topLevelDirectory := None
 ThisBuild / scalacOptions += "-source:future"
 
 lazy val `smithy4s-preprocessors` = project
   .in(file("smithy4s-preprocessors"))
   .settings(
-    scalaVersion := "2.12.13", // 2.12 to match what SBT uses
+    scalaVersion := "2.12.19", // 2.12 for sbt plugins path; 2.12.18+ needed for JDK 21 (bridge compile / ASM)
     scalacOptions -= "-source:future",
     libraryDependencies ++= {
       Seq(
