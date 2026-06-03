@@ -71,7 +71,7 @@ lazy val `autoscaling-ecs-core`: Project = project
         "org.tpolecat" %% "natchez-core" % "0.3.5",
         "org.typelevel" %% "cats-tagless-core" % "0.15.0",
         "org.typelevel" %% "alleycats-core" % "2.10.0",
-        "com.dwolla" %% "natchez-tagless" % "0.2.5",
+        "com.dwolla" %% "natchez-tagless" % "0.2.6",
       )
     },
   )
